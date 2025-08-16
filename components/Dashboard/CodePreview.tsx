@@ -2,7 +2,7 @@
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
-export default function SnippetPreview({ snippet }: { snippet: any | null }) {
+export default function CodePreview({ snippet }: { snippet: any | null }) {
   if (!snippet) {
     return <p className="text-gray-400">Select a snippet to view details</p>;
   }

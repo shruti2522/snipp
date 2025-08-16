@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { FaPlus, FaCog } from "react-icons/fa";
 import Workspaces from "./Workspaces";
-import Snippets from "./SnippetPreview";
-import SnippetPreview from "./CodePreview";
+import SnippetsPreview from "./SnippetsPreview";
+import CodePreview from "./CodePreview";
 import CollectionSidebar from "./CollectionSidebar";
 
 export default function Dashboard() {
@@ -105,11 +105,11 @@ export default function Dashboard() {
 
       {/* Main content */}
       <main className="flex flex-1">
-        <Snippets
+        <SnippetsPreview
           snippets={snippets}
           onSelectSnippet={setSelectedSnippet}
         />
-        <SnippetPreview snippet={selectedSnippet} />
+        <CodePreview snippet={selectedSnippet} />
       </main>
     </div>
   );
