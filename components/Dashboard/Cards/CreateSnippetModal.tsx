@@ -21,6 +21,19 @@ export default function CreateSnippetModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset fields any time the modal opens (so each open is fresh)
+  useEffect(() => {
+    if (isOpen) {
+      setTitle("");
+      setDescription("");
+      setCode("");
+      setLanguage("");
+      setTagsInput("");
+      setError(null);
+      setSubmitting(false);
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -67,8 +80,27 @@ export default function CreateSnippetModal({
         const msg = await res.text();
         throw new Error(msg || "Failed to create snippet");
       }
-      const created = await res.json();
-      onCreated?.(created);
+
+      // parse response & unwrap common wrappers
+      const createdRaw = await res.json();
+      console.log("CreateSnippetModal - raw response:", createdRaw);
+
+      // handle shapes like { snippet: {...} } or { data: {...} }
+      const created = createdRaw?.snippet ?? createdRaw?.data ?? createdRaw;
+
+      // optionally ensure common fields exist (so parent gets content/code/language)
+      const normalized = {
+        ...created,
+        content: created.content ?? created.code ?? "",
+        code: created.code ?? created.content ?? "",
+        language: created.language ?? created.lang ?? language.trim(),
+        collectionId: created.collectionId ?? created.collection?.id ?? collectionId,
+      };
+
+      // call parent's callback with normalized payload so Dashboard can insert it
+      onCreated?.(normalized);
+
+      // close modal
       onClose();
     } catch (e: any) {
       console.error(e);

@@ -12,6 +12,7 @@ export default function CollectionSidebar({
   setCollections,
   selectedWorkspaceId,
   onAddSnippet,
+  onSnippetCreated, // Add this new prop
 }: any) {
   const [addingCollection, setAddingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
@@ -57,22 +58,22 @@ export default function CollectionSidebar({
   }, [menuOpenId]);
 
   useEffect(() => {
-  if (!addingCollection) return;
+    if (!addingCollection) return;
 
-  const handleClickOutside = (e: MouseEvent) => {
-    if (
-      createInputRef.current &&
-      !createInputRef.current.contains(e.target as Node)
-    ) {
-      if (!newCollectionName.trim()) {
-        setAddingCollection(false);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        createInputRef.current &&
+        !createInputRef.current.contains(e.target as Node)
+      ) {
+        if (!newCollectionName.trim()) {
+          setAddingCollection(false);
+        }
       }
-    }
-  };
+    };
 
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => document.removeEventListener("mousedown", handleClickOutside);
-}, [addingCollection, newCollectionName]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [addingCollection, newCollectionName]);
 
   const handleCreate = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
@@ -145,8 +146,8 @@ export default function CollectionSidebar({
   };
 
   return (
-    // Sidebar default: disable selection and hide caret; inputs re-enable selection
-    <aside className="w-64 bg-[#1A1D29] border-r border-gray-800 p-4 overflow-y-auto">
+    // No fixed width here — parent controls width via flex ratios
+    <aside className="h-full bg-[#1A1D29] border-r border-gray-800 p-4 overflow-y-auto">
       <div className="flex justify-between items-center mb-4">
         <h2 className="font-bold text-lg select-none">Collections</h2>
         <button
@@ -234,7 +235,7 @@ export default function CollectionSidebar({
 
               {menuOpenId === col.id && (
                 <div
-                  className="absolute right-0 top-full mt-1 bg-[#2A2D3A] rounded shadow-lg text-sm z-10 min-w-36"
+                  className="absolute right-0 top-full mt-1 bg-[#2A2D3A] rounded shadow-lg text-sm z-10 whitespace-nowrap"
                   role="menu"
                 >
                   <button
@@ -276,7 +277,11 @@ export default function CollectionSidebar({
           onClose={() => setSnippetModalOpen(false)}
           collectionId={snippetCollectionId ?? selectedCollection}
           onCreated={(snippet: any) => {
-            if (typeof onAddSnippet === "function") onAddSnippet(snippet);
+            // Use the new onSnippetCreated prop that handles the full snippet object
+            if (typeof onSnippetCreated === "function") {
+              onSnippetCreated(snippet);
+            }
+            setSnippetModalOpen(false);
           }}
         />
       )}

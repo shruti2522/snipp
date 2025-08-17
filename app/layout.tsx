@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "snippet-sync",
-  description: "Therapist session overview",
+  description: "sync your snippets",
 };
 
 export default function RootLayout({

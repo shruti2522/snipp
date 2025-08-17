@@ -2,6 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaEllipsisV, FaEdit, FaTrash } from "react-icons/fa";
+import {
+  SiJavascript,
+  SiTypescript,
+  SiPython,
+  SiHtml5,
+  SiCss3,
+  SiCplusplus,
+  SiRust
+} from "react-icons/si";
 
 export default function SnippetsPreview({
   snippets,
@@ -14,9 +23,7 @@ export default function SnippetsPreview({
   onEditSnippet?: (snippet: any) => void;
   onDeleteSnippet?: (snippet: any) => void;
 }) {
-  // track which snippet menu is open
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  // refs for click-outside handling (one ref per snippet card)
   const menuRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -43,10 +50,8 @@ export default function SnippetsPreview({
     if (typeof onDeleteSnippet === "function") {
       onDeleteSnippet(snip);
     } else {
-      // fallback
       if (confirm(`Delete snippet "${snip.title}"?`)) {
-        // consumer didn't provide a handler — user can implement deletion in parent
-        // but we'll call onDeleteSnippet if later provided
+        // fallback delete
       }
     }
     setMenuOpenId(null);
@@ -57,8 +62,46 @@ export default function SnippetsPreview({
     setMenuOpenId(null);
   };
 
+  const handleCardKey = (e: React.KeyboardEvent, snip: any) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelectSnippet(snip);
+    }
+  };
+
+  const getLanguageIcon = (lang?: string) => {
+    if (!lang) return null;
+    switch (lang.toLowerCase()) {
+      case "javascript":
+        return <SiJavascript className="text-yellow-400" size={18} />;
+      case "typescript":
+        return <SiTypescript className="text-blue-400" size={18} />;
+      case "python":
+        return <SiPython className="text-green-400" size={18} />;
+      case "html":
+        return <SiHtml5 className="text-orange-500" size={18} />;
+      case "css":
+        return <SiCss3 className="text-sky-400" size={18} />;
+      case "c++":
+      case "cpp":
+        return <SiCplusplus className="text-indigo-400" size={18} />;
+      case "rust":
+        return <SiRust className="text-indigo-400" size={18} />;
+      default:
+        return null;
+    }
+  };
+
+  const smallPreview = (content: string | undefined, lines = 3) => {
+    if (!content) return "";
+    const arr = content.split("\n").map((l) => l.replace(/\t/g, "  "));
+    const slice = arr.slice(0, lines);
+    const more = arr.length > lines;
+    return slice.join("\n") + (more ? "\n..." : "");
+  };
+
   return (
-    <section className="flex-1 p-6 overflow-y-auto border-r border-gray-800">
+    <section className="h-full p-6 overflow-y-auto border-r border-gray-800">
       <div className="relative mb-6">
         <AiOutlineSearch className="absolute left-3 top-3 text-gray-400" />
         <input
@@ -75,31 +118,16 @@ export default function SnippetsPreview({
             <div
               key={id}
               ref={(el) => {
-                // store the card element so the dropdown click-outside can use it
-                if (el) menuRefs.current[id] = el;
+                menuRefs.current[id] = el;
               }}
-              className="group bg-[#1A1D29] p-4 rounded border border-transparent hover:border-indigo-500 hover:scale-[1.01] transition cursor-pointer relative"
+              className={`group relative rounded-xl p-6 min-h-[140px] bg-gradient-to-r from-[#222633] via-[#1C1F29] to-[#15171F]
+ hover:scale-[1.01] transition cursor-pointer border border-transparent hover:border-indigo-500`}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => handleCardKey(e, snip)}
             >
-              {/* clickable card area */}
-              <div
-                onClick={() => onSelectSnippet(snip)}
-                className="pr-8" /* leave space for kebab */
-              >
-                <h3 className="font-semibold">{snip.title}</h3>
-                <div className="mt-2 flex gap-2 flex-wrap">
-                  {snip.tags?.map((tag: any) => (
-                    <span
-                      key={tag.id}
-                      className="px-2 py-0.5 text-xs bg-purple-600/20 text-purple-400 rounded"
-                    >
-                      {tag.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* kebab (three dots) - visible on hover */}
-              <div className="absolute right-3 top-3">
+              {/* kebab (three dots) */}
+              <div className="absolute right-4 top-4">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -113,7 +141,6 @@ export default function SnippetsPreview({
                   <FaEllipsisV size={14} />
                 </button>
 
-                {/* dropdown menu */}
                 {menuOpenId === id && (
                   <div
                     onClick={(e) => e.stopPropagation()}
@@ -136,6 +163,33 @@ export default function SnippetsPreview({
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* clickable card area */}
+              <div onClick={() => onSelectSnippet(snip)} className="pr-8">
+                <div className="flex items-center gap-2">
+                  {getLanguageIcon(snip.language)}
+                  <h3 className="font-semibold text-lg text-gray-100">{snip.title}</h3>
+                </div>
+
+                {snip.description && (
+                  <p className="mt-2 text-sm text-gray-300 line-clamp-2">{snip.description}</p>
+                )}
+
+                <pre className="mt-3 text-xs font-mono leading-5 text-gray-200 bg-transparent max-h-[4.5rem] overflow-hidden whitespace-pre-wrap">
+                  {smallPreview(snip.content || snip.code || "", 3)}
+                </pre>
+
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  {snip.tags?.map((tag: any) => (
+                    <span
+                      key={tag.id}
+                      className="px-2 py-0.5 text-xs bg-purple-600/20 text-purple-400 rounded"
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           );
