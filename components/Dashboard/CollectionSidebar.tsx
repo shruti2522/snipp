@@ -125,25 +125,42 @@ export default function CollectionSidebar({
   };
 
   // Called when delete confirmed in DeleteCollectionModal
-  const confirmDelete = async (id: number) => {
-    try {
-      setDeleting(true);
-      const res = await fetch(`/api/collections?id=${id}`, {
-        method: "DELETE",
-      });
+  // inside CollectionSidebar component
+const confirmDelete = async (id: number) => {
+  try {
+    setDeleting(true);
+    const res = await fetch(`/api/collections?id=${id}`, {
+      method: "DELETE",
+    });
 
-      if (!res.ok) throw new Error("Failed to delete collection");
-
-      setCollections((prev: any[]) => prev.filter((c) => c.id !== id));
-      setDeleteModalOpen(false);
-      setDeleteTargetId(null);
-      setDeleteTargetName(null);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setDeleting(false);
+    if (!res.ok) {
+      // try to extract JSON/text error from server for debugging
+      let msg = `Delete failed: ${res.status}`;
+      try {
+        const body = await res.json();
+        msg = body?.error ?? body?.message ?? JSON.stringify(body);
+      } catch (err) {
+        try {
+          const text = await res.text();
+          msg = text || msg;
+        } catch (_) {}
+      }
+      console.error("Delete collection error:", msg);
+      throw new Error(msg);
     }
-  };
+
+    // success -> remove locally
+    setCollections((prev: any[]) => prev.filter((c) => c.id !== id));
+    setDeleteModalOpen(false);
+    setDeleteTargetId(null);
+    setDeleteTargetName(null);
+  } catch (err) {
+    console.error("confirmDelete caught:", err);
+    // optionally show an inline error toast here
+  } finally {
+    setDeleting(false);
+  }
+};
 
   return (
     // No fixed width here — parent controls width via flex ratios
@@ -179,7 +196,7 @@ export default function CollectionSidebar({
           <li
             key={col.id}
             className={`group flex justify-between items-center gap-2 px-2 py-1 rounded cursor-pointer ${
-              selectedCollection === col.id ? "bg-indigo-600" : "hover:bg-[#2A2D3A]"
+              selectedCollection === col.id ? "bg-indigo-500" : "hover:bg-[#2A2D3A]"
             }`}
             onClick={() => onSelectCollection(col.id)}
           >

@@ -11,6 +11,7 @@ import { FaBars } from "react-icons/fa";
 export default function Dashboard() {
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [collections, setCollections] = useState<any[]>([]);
+
   const [snippets, setSnippets] = useState<any[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<number | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<number | null>(null);
@@ -117,7 +118,6 @@ export default function Dashboard() {
 
   // Handler for deleting snippets
   const handleDeleteSnippet = async (snippetToDelete: any) => {
-    if (!confirm(`Delete snippet "${snippetToDelete.title}"?`)) return;
     
     try {
       const res = await fetch(`/api/snippets/${snippetToDelete.id}`, {
@@ -184,6 +184,7 @@ export default function Dashboard() {
           onSelectSnippet={setSelectedSnippet}
           onEditSnippet={handleEditSnippet}
           onDeleteSnippet={handleDeleteSnippet}
+          selectedSnippetId={selectedSnippet?.id}
         />
       </div>
 

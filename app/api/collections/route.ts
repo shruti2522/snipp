@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
+import { NextResponse } from "next/server";
 
 // GET collections for a specific workspace
 export async function GET(req: Request) {
@@ -75,16 +76,38 @@ export async function DELETE(req: Request) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return new Response(JSON.stringify({ error: "id is required" }), { status: 400 });
+      return NextResponse.json({ error: "Collection id is required" }, { status: 400 });
     }
 
-    await prisma.collection.delete({
-      where: { id: Number(id) }
+    const numericId = Number(id);
+    if (Number.isNaN(numericId)) {
+      return NextResponse.json({ error: "Invalid collection id" }, { status: 400 });
+    }
+
+    // Optional: check if collection exists
+    const col = await prisma.collection.findUnique({ where: { id: numericId }});
+    if (!col) {
+      return NextResponse.json({ error: "Collection not found" }, { status: 404 });
+    }
+
+    // 1) delete child snippets first (avoids FK constraint errors)
+    await prisma.snippet.deleteMany({
+      where: { collectionId: numericId },
     });
 
-    return new Response(null, { status: 204 });
-  } catch (error) {
-    console.error(error);
-    return new Response(JSON.stringify({ error: "Failed to delete collection" }), { status: 500 });
+    // 2) delete the collection
+    await prisma.collection.delete({
+      where: { id: numericId },
+    });
+
+    return NextResponse.json({ message: "Collection deleted successfully" });
+  } catch (err: any) {
+    // Log full error to server console (inspect terminal)
+    console.error("DELETE /api/collections error:", err);
+    // Return informative message to client for debugging (do not leak secrets in prod)
+    return NextResponse.json({ error: err?.message ?? "Failed to delete collection" }, { status: 500 });
+  } finally {
+    // optional: you can disconnect prisma here in long-running scripts; for dev it's fine to leave it
+    // await prisma.$disconnect();
   }
 }
