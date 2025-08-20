@@ -21,20 +21,17 @@ export default function Dashboard() {
   // NEW: workspace-level loading state
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
-  // Load workspaces on mount
-  useEffect(() => {
-    fetch("/api/workspaces")
-      .then((r) => r.json())
-      .then((data) => {
-        setWorkspaces(data);
-        if (Array.isArray(data) && data.length > 0) setSelectedWorkspace(data[0].id);
-      })
-      .catch((err) => console.error("Failed to load workspaces:", err));
-  }, []);
+  // Helper: normalize id values to number | null
+  const normalizeId = (id: any): number | null => {
+    if (id === null || id === undefined) return null;
+    if (typeof id === "number") return id;
+    const n = Number(id);
+    return Number.isNaN(n) ? null : n;
+  };
 
-  // Fetch collections + initial snippets whenever workspace changes (shows workspaceLoading)
-  useEffect(() => {
-    if (!selectedWorkspace) {
+  // Fetch collections + initial snippets for a workspace (used in effect & manual re-fetch)
+  const fetchCollectionsAndInitialSnippets = async (workspaceIdNum: number | null, signal?: AbortSignal) => {
+    if (workspaceIdNum === null) {
       setCollections([]);
       setSelectedCollection(null);
       setSnippets([]);
@@ -42,63 +39,119 @@ export default function Dashboard() {
       return;
     }
 
+    try {
+      setWorkspaceLoading(true);
+
+      // parallelize collection fetch and (optionally) initial snippet fetch once we know first collection
+      const colRes = await fetch(`/api/collections?workspaceId=${workspaceIdNum}`, { signal });
+      if (!colRes.ok) throw new Error("Failed to fetch collections");
+      const colData = await colRes.json();
+      const cols = Array.isArray(colData) ? colData : [];
+      setCollections(cols);
+
+      const firstCollectionId = cols.length > 0 ? normalizeId(cols[0].id) : null;
+      setSelectedCollection(firstCollectionId);
+
+      if (firstCollectionId !== null) {
+        const snipRes = await fetch(`/api/snippets?collectionId=${firstCollectionId}`, { signal });
+        if (!snipRes.ok) throw new Error("Failed to fetch snippets for collection");
+        const snipData = await snipRes.json();
+        const snips = Array.isArray(snipData) ? snipData : [];
+        setSnippets(snips);
+        setSelectedSnippet(snips.length > 0 ? snips[0] : null);
+      } else {
+        setSnippets([]);
+        setSelectedSnippet(null);
+      }
+    } catch (err) {
+      if ((err as any)?.name === "AbortError") {
+        // fetch was aborted; ignore
+      } else {
+        console.error("Failed to load collections/snippets for workspace:", err);
+      }
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  };
+
+  // Load workspaces on mount
+  useEffect(() => {
     let cancelled = false;
-
-    const fetchCollectionsAndInitialSnippets = async (workspaceId: number) => {
+    (async () => {
       try {
-        setWorkspaceLoading(true);
-        // fetch collections
-        const colRes = await fetch(`/api/collections?workspaceId=${workspaceId}`);
-        const colData = await colRes.json();
+        const res = await fetch("/api/workspaces");
+        const data = await res.json();
         if (cancelled) return;
-        setCollections(colData);
 
-        const firstCollectionId = Array.isArray(colData) && colData.length > 0 ? colData[0].id : null;
-        setSelectedCollection(firstCollectionId);
+        const list = Array.isArray(data) ? data : [];
+        setWorkspaces(list);
 
-        if (firstCollectionId) {
-          // fetch snippets for that collection
-          const snipRes = await fetch(`/api/snippets?collectionId=${firstCollectionId}`);
-          const snipData = await snipRes.json();
-          if (cancelled) return;
-          setSnippets(snipData);
-          setSelectedSnippet(Array.isArray(snipData) && snipData.length > 0 ? snipData[0] : null);
+        // select first workspace if none selected
+        if (list.length > 0) {
+          const id = normalizeId(list[0].id);
+          setSelectedWorkspace(id);
         } else {
-          setSnippets([]);
-          setSelectedSnippet(null);
+          setSelectedWorkspace(null);
         }
       } catch (err) {
-        console.error("Failed to load collections/snippets for workspace:", err);
-      } finally {
-        if (!cancelled) setWorkspaceLoading(false);
+        if ((err as any)?.name !== "AbortError") {
+          console.error("Failed to load workspaces:", err);
+          setWorkspaces([]);
+        }
       }
-    };
-
-    fetchCollectionsAndInitialSnippets(selectedWorkspace);
+    })();
 
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetch collections + initial snippets whenever workspace changes (shows workspaceLoading)
+  useEffect(() => {
+    // if selectedWorkspace is null -> clear
+    if (selectedWorkspace === null) {
+      setCollections([]);
+      setSelectedCollection(null);
+      setSnippets([]);
+      setSelectedSnippet(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    fetchCollectionsAndInitialSnippets(selectedWorkspace, controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkspace]);
 
   // Fetch snippets whenever collection changes (not workspaceLoading — this is collection-level)
   useEffect(() => {
-    if (!selectedCollection) {
+    if (selectedCollection === null) {
       setSnippets([]);
       setSelectedSnippet(null);
       return;
     }
 
     let cancelled = false;
-    const fetchSnippetsForCollection = async (collectionId: number) => {
+    const controller = new AbortController();
+
+    const fetchSnippetsForCollection = async (collectionIdNum: number) => {
       try {
-        const res = await fetch(`/api/snippets?collectionId=${collectionId}`);
+        const res = await fetch(`/api/snippets?collectionId=${collectionIdNum}`, { signal: controller.signal });
+        if (!res.ok) throw new Error("Failed to fetch snippets");
         const data = await res.json();
         if (cancelled) return;
-        setSnippets(data);
-        setSelectedSnippet(Array.isArray(data) && data.length > 0 ? data[0] : null);
+        const arr = Array.isArray(data) ? data : [];
+        setSnippets(arr);
+        setSelectedSnippet(arr.length > 0 ? arr[0] : null);
       } catch (err) {
-        console.error("Failed to load snippets:", err);
+        if ((err as any)?.name === "AbortError") {
+          // ignore
+        } else {
+          console.error("Failed to load snippets:", err);
+        }
       }
     };
 
@@ -106,74 +159,52 @@ export default function Dashboard() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [selectedCollection]);
 
   // --- Workspace selection ---
-  const handleSelectWorkspace = (workspaceId: number) => {
-    if (workspaceId === selectedWorkspace) {
-      // Force refetch of collections + initial snippets even if same workspace
-      // Trigger the same flow as the selectedWorkspace effect by temporarily toggling
-      // Alternatively call the same fetch logic here:
-      setWorkspaceLoading(true);
-      fetch(`/api/collections?workspaceId=${workspaceId}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setCollections(data);
-          const firstCollectionId = Array.isArray(data) && data.length > 0 ? data[0].id : null;
-          setSelectedCollection(firstCollectionId);
-          if (!firstCollectionId) {
-            setSnippets([]);
-            setSelectedSnippet(null);
-            setWorkspaceLoading(false);
-            return;
-          }
-          return fetch(`/api/snippets?collectionId=${firstCollectionId}`);
-        })
-        .then(async (r) => {
-          if (!r) return;
-          const snips = await r.json();
-          setSnippets(snips);
-          setSelectedSnippet(Array.isArray(snips) && snips.length > 0 ? snips[0] : null);
-        })
-        .catch((err) => console.error("Failed to refetch workspace data:", err))
-        .finally(() => setWorkspaceLoading(false));
+  const handleSelectWorkspace = (workspaceId: number | null) => {
+    const idNum = normalizeId(workspaceId);
+    // If same workspace clicked, force refetch of collections + initial snippets
+    if (idNum !== null && idNum === selectedWorkspace) {
+      fetchCollectionsAndInitialSnippets(idNum);
       return;
     }
-    setSelectedWorkspace(workspaceId);
+    setSelectedWorkspace(idNum);
   };
 
   // --- Workspace creation / update / deletion handler ---
   const handleWorkspaceCreated = (ws: any) => {
     setWorkspaces((prev) => {
-      if (ws.deleted) {
-        // Remove deleted workspace
-        return prev.filter((w) => w.id !== ws.id);
+      // deletion signal: { id, deleted: true }
+      if (ws?.deleted) {
+        return prev.filter((w) => String(w.id) !== String(ws.id));
       }
 
-      const index = prev.findIndex((w) => w.id === ws.id);
-      if (index !== -1) {
-        // Update existing workspace (e.g., rename)
-        const updated = [...prev];
-        updated[index] = ws;
-        return updated;
+      // update existing
+      const idx = prev.findIndex((w) => String(w.id) === String(ws.id));
+      if (idx !== -1) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...ws };
+        return copy;
       }
 
-      // Add new workspace
-      return [...prev, ws];
+      // add new workspace (push to front)
+      return [ws, ...prev];
     });
 
-    // Handle selection
-    if (ws.deleted) {
+    // selection behavior
+    if (ws?.deleted) {
       setSelectedWorkspace((cur) => {
-        if (cur === ws.id) {
-          const remaining = workspaces.filter((w) => w.id !== ws.id);
-          return remaining[0]?.id ?? null;
+        if (String(cur) === String(ws.id)) {
+          const remaining = workspaces.filter((w) => String(w.id) !== String(ws.id));
+          return normalizeId(remaining[0]?.id);
         }
         return cur;
       });
     } else {
-      setSelectedWorkspace(ws.id);
+      setSelectedWorkspace(normalizeId(ws.id));
     }
   };
 
@@ -186,19 +217,19 @@ export default function Dashboard() {
   const handleUpdateSnippet = (updatedSnippet: any) => {
     const uId = String(updatedSnippet.id);
     setSnippets((prev: any[]) =>
-      prev.some((s) => String(s.id) === uId)
-        ? prev.map((s) => (String(s.id) === uId ? updatedSnippet : s))
-        : [updatedSnippet, ...prev]
+      prev.some((s) => String(s.id) === uId) ? prev.map((s) => (String(s.id) === uId ? updatedSnippet : s)) : [updatedSnippet, ...prev]
     );
     setSelectedSnippet((cur: any) => (cur && String(cur.id) === uId ? updatedSnippet : cur));
   };
 
   const handleDeleteSnippet = async (snippetToDelete: any) => {
     try {
-      const res = await fetch(`/api/snippets/${snippetToDelete.id}`, { method: "DELETE" });
+      const id = normalizeId(snippetToDelete?.id);
+      if (id === null) throw new Error("Invalid snippet id");
+      const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setSnippets((prev: any[]) => prev.filter((s) => String(s.id) !== String(snippetToDelete.id)));
-        if (selectedSnippet?.id === snippetToDelete.id) setSelectedSnippet(null);
+        setSnippets((prev: any[]) => prev.filter((s) => String(s.id) !== String(id)));
+        if (selectedSnippet?.id === id) setSelectedSnippet(null);
       } else {
         console.error("Failed to delete snippet:", await res.text());
       }
@@ -208,7 +239,7 @@ export default function Dashboard() {
   };
 
   const handleAddSnippet = async (title: string) => {
-    if (!title || !selectedCollection) return;
+    if (!title || selectedCollection === null) return;
     try {
       const res = await fetch("/api/snippets", {
         method: "POST",
@@ -225,7 +256,9 @@ export default function Dashboard() {
         const newSnippet = await res.json();
         setSnippets((prev: any[]) => [newSnippet, ...prev]);
         setSelectedSnippet(newSnippet);
-      } else console.error("Failed to create snippet:", await res.text());
+      } else {
+        console.error("Failed to create snippet:", await res.text());
+      }
     } catch (err) {
       console.error("Error creating snippet:", err);
     }

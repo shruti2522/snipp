@@ -14,7 +14,7 @@ export default function Workspaces({
 }: {
   workspaces: any[];
   selectedWorkspace: number | null;
-  onSelectWorkspace: (id: number) => void;
+  onSelectWorkspace: (id: number | null) => void;
   onAddWorkspace: () => void;
   onWorkspaceCreated?: (ws: any) => void;
 }) {
@@ -59,6 +59,17 @@ export default function Workspaces({
     "from-gray-900 to-blue-800",
   ];
 
+  // Normalize workspaces to an array (defensive)
+  const wsList = Array.isArray(workspaces) ? workspaces : [];
+
+  // helper to normalize id to number|null
+  const normalizeId = (id: any): number | null => {
+    if (id === null || id === undefined) return null;
+    if (typeof id === "number") return id;
+    const n = Number(id);
+    return Number.isNaN(n) ? null : n;
+  };
+
   // --- CREATE WORKSPACE ---
   const createWorkspace = async () => {
     if (!newWorkspaceName.trim()) return;
@@ -66,13 +77,14 @@ export default function Workspaces({
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newWorkspaceName }),
+        body: JSON.stringify({ name: newWorkspaceName.trim() }),
       });
       const data = await res.json();
       if (res.ok) {
         setIsModalOpen(false);
         setNewWorkspaceName("");
-        onWorkspaceCreated?.(data);
+        closeContextMenu();
+        onWorkspaceCreated?.(data); // pass created workspace back to parent
       } else {
         console.error("Error creating workspace:", data);
       }
@@ -90,16 +102,23 @@ export default function Workspaces({
   // --- CONFIRM RENAME ---
   const handleRenameConfirm = async (newName: string) => {
     if (!renameModal.workspace) return;
+    const id = normalizeId(renameModal.workspace.id);
+    if (id === null) {
+      console.error("Invalid workspace id for rename");
+      return;
+    }
+
     setRenameModal((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await fetch(`/api/workspaces/${renameModal.workspace.id}`, {
-        method: "PATCH",
+      // Use PUT with query param to match the server route (/api/workspaces?id=)
+      const res = await fetch(`/api/workspaces?id=${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName }),
+        body: JSON.stringify({ name: newName.trim() }),
       });
       const updated = await res.json();
       if (res.ok) {
-        onWorkspaceCreated?.(updated);
+        onWorkspaceCreated?.(updated); // parent can merge/update the list
         setRenameModal({ open: false, workspace: null, loading: false });
       } else {
         console.error("Failed to rename workspace:", updated?.error || updated);
@@ -119,26 +138,33 @@ export default function Workspaces({
 
   const handleDeleteConfirm = async () => {
     if (!deleteModal.workspace) return;
+    const id = normalizeId(deleteModal.workspace.id);
+    if (id === null) {
+      console.error("Invalid workspace id for delete");
+      return;
+    }
+
     setDeleteModal((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await fetch(`/api/workspaces/${deleteModal.workspace.id}`, {
+      // Use DELETE with query param to match the server route (/api/workspaces?id=)
+      const res = await fetch(`/api/workspaces?id=${id}`, {
         method: "DELETE",
       });
 
       if (res.ok) {
-        // Remove workspace immediately from parent state
-        onWorkspaceCreated?.({ id: deleteModal.workspace.id, deleted: true });
+        // Inform parent that this workspace was deleted
+        onWorkspaceCreated?.({ id, deleted: true });
 
         // If deleted workspace was selected, select next available
-        if (selectedWorkspace === deleteModal.workspace.id) {
-          const remaining = workspaces.filter((ws) => ws.id !== deleteModal.workspace.id);
-          const nextSelected = remaining[0]?.id ?? null;
+        if (selectedWorkspace === id) {
+          const remaining = wsList.filter((ws) => normalizeId(ws.id) !== id);
+          const nextSelected = normalizeId(remaining[0]?.id) ?? null;
           onSelectWorkspace(nextSelected);
         }
 
         setDeleteModal({ open: false, workspace: null, loading: false });
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ error: "Unknown error" }));
         console.error("Failed to delete workspace:", data.error || data);
         setDeleteModal((prev) => ({ ...prev, loading: false }));
       }
@@ -197,37 +223,42 @@ export default function Workspaces({
           }
         `}</style>
 
-        {workspaces.map((ws, i) => {
-          const isSelected = selectedWorkspace === ws.id;
-          return (
-            <div
-              key={`${ws.id}-${i}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectWorkspace(ws.id);
-              }}
-              onContextMenu={(e) => {
-                e.stopPropagation();
-                handleContextMenu(e, ws);
-              }}
-              title={ws.name}
-              className={`aspect-square w-6/10 rounded-xl flex items-center justify-center uppercase cursor-pointer select-none transition-all duration-300
+        {wsList.length === 0 ? (
+          <div className="text-gray-400 text-sm px-4">No workspaces yet</div>
+        ) : (
+          wsList.map((ws, i) => {
+            const idNum = normalizeId(ws.id);
+            const isSelected = idNum !== null && selectedWorkspace === idNum;
+            return (
+              <div
+                key={`${String(ws.id)}-${i}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectWorkspace(idNum);
+                }}
+                onContextMenu={(e) => {
+                  e.stopPropagation();
+                  handleContextMenu(e, ws);
+                }}
+                title={ws.name}
+                className={`aspect-square w-6/10 rounded-xl flex items-center justify-center uppercase cursor-pointer select-none transition-all duration-300
                 bg-gradient-to-r ${gradients[i % gradients.length]}
                 ${isSelected
                   ? "border-2 border-white shadow-lg scale-110"
                   : "hover:scale-105 hover:shadow-md hover:brightness-110"}
               `}
-            >
-              <span
-                className={`font-extrabold text-2xl tracking-wider drop-shadow-[0_0_10px_rgba(147,51,234,0.9)]
+              >
+                <span
+                  className={`font-extrabold text-2xl tracking-wider drop-shadow-[0_0_10px_rgba(147,51,234,0.9)]
                   ${isSelected ? "text-white" : "text-gray-100"}
                 `}
-              >
-                {ws.name?.[0] ?? "W"}
-              </span>
-            </div>
-          );
-        })}
+                >
+                  {ws.name?.[0] ?? "W"}
+                </span>
+              </div>
+            );
+          })
+        )}
 
         {/* Add Button */}
         <button
