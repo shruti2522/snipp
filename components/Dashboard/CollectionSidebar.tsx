@@ -191,101 +191,120 @@ const confirmDelete = async (id: number) => {
         </div>
       )}
 
-      <ul>
-        {collections.map((col: any) => (
-          <li
-            key={col.id}
-            className={`group flex justify-between items-center gap-2 px-2 py-1 rounded cursor-pointer ${
-              selectedCollection === col.id ? "bg-indigo-500" : "hover:bg-[#2A2D3A]"
-            }`}
-            onClick={() => onSelectCollection(col.id)}
+      {/* Empty state when no collections */}
+      {collections.length === 0 && !addingCollection ? (
+        <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+          {/* <div className="text-gray-500 mb-3">
+            <FaPlus size={24} className="mx-auto mb-2 opacity-50" />
+          </div> */}
+          <p className="text-gray-400 text-sm mb-3 leading-relaxed">
+            No collections here
+          </p>
+          <button
+            onClick={() => setAddingCollection(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded transition-colors"
           >
-            {renamingId === col.id ? (
-              <input
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleRename(col.id)}
-                className="flex-1 bg-[#0E1116] border border-gray-700 rounded px-2 py-1 text-sm select-text caret-auto"
-                autoFocus
-              />
-            ) : (
-              <span className="truncate flex-1 select-none">{col.name}</span>
-            )}
-
-            <div
-              className="relative flex items-center gap-1"
-              ref={(el) => {
-                menuRefs.current[col.id] = el;
-              }}
+            <FaPlus size={12} />
+            Create a Collection
+          </button>
+        </div>
+      ) : (
+        <ul>
+          {collections.map((col: any) => (
+            <li
+              key={col.id}
+              className={`group flex justify-between items-center gap-2 px-2 py-1 rounded cursor-pointer ${
+                selectedCollection === col.id ? "bg-indigo-500" : "hover:bg-[#2A2D3A]"
+              }`}
+              onClick={() => onSelectCollection(col.id)}
             >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSnippetCollectionId(col.id);
-                  setSnippetModalOpen(true);
-                  setMenuOpenId(null);
-                }}
-                className={`text-gray-400 hover:text-white transition-opacity outline-none ${
-                  menuOpenId === col.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                }`}
-                aria-label="Add snippet"
-                title="Add snippet"
-              >
-                <FaPlus size={12} />
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpenId(menuOpenId === col.id ? null : col.id);
-                }}
-                className={`text-gray-400 hover:text-white transition-opacity outline-none ${
-                  menuOpenId === col.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                }`}
-                aria-haspopup="menu"
-                aria-expanded={menuOpenId === col.id}
-                aria-label="Collection options"
-                title="Options"
-              >
-                <FaEllipsisV size={12} />
-              </button>
-
-              {menuOpenId === col.id && (
-                <div
-                  className="absolute right-0 top-full mt-1 bg-[#2A2D3A] rounded shadow-lg text-sm z-10 whitespace-nowrap"
-                  role="menu"
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRenamingId(col.id);
-                      setRenameValue(col.name);
-                      setMenuOpenId(null);
-                    }}
-                    className="flex items-center gap-2 px-3 py-1 hover:bg-indigo-600 w-full text-left"
-                    role="menuitem"
-                  >
-                    <FaEdit size={12} /> Rename
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTargetId(col.id);
-                      setDeleteTargetName(col.name ?? null);
-                      setDeleteModalOpen(true);
-                      setMenuOpenId(null);
-                    }}
-                    className="flex items-center gap-2 px-3 py-1 hover:bg-red-600 w-full text-left"
-                    role="menuitem"
-                  >
-                    <FaTrash size={12} /> Delete
-                  </button>
-                </div>
+              {renamingId === col.id ? (
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleRename(col.id)}
+                  className="flex-1 bg-[#0E1116] border border-gray-700 rounded px-2 py-1 text-sm select-text caret-auto"
+                  autoFocus
+                />
+              ) : (
+                <span className="truncate flex-1 select-none">{col.name}</span>
               )}
-            </div>
-          </li>
-        ))}
-      </ul>
+
+              <div
+                className="relative flex items-center gap-1"
+                ref={(el) => {
+                  menuRefs.current[col.id] = el;
+                }}
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSnippetCollectionId(col.id);
+                    setSnippetModalOpen(true);
+                    setMenuOpenId(null);
+                  }}
+                  className={`text-gray-400 hover:text-white transition-opacity outline-none ${
+                    menuOpenId === col.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  aria-label="Add snippet"
+                  title="Add snippet"
+                >
+                  <FaPlus size={12} />
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpenId(menuOpenId === col.id ? null : col.id);
+                  }}
+                  className={`text-gray-400 hover:text-white transition-opacity outline-none ${
+                    menuOpenId === col.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpenId === col.id}
+                  aria-label="Collection options"
+                  title="Options"
+                >
+                  <FaEllipsisV size={12} />
+                </button>
+
+                {menuOpenId === col.id && (
+                  <div
+                    className="absolute right-0 top-full mt-1 bg-[#2A2D3A] rounded shadow-lg text-sm z-10 whitespace-nowrap"
+                    role="menu"
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenamingId(col.id);
+                        setRenameValue(col.name);
+                        setMenuOpenId(null);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1 hover:bg-indigo-600 w-full text-left"
+                      role="menuitem"
+                    >
+                      <FaEdit size={12} /> Rename
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTargetId(col.id);
+                        setDeleteTargetName(col.name ?? null);
+                        setDeleteModalOpen(true);
+                        setMenuOpenId(null);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1 hover:bg-red-600 w-full text-left"
+                      role="menuitem"
+                    >
+                      <FaTrash size={12} /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Snippet modal (separate file) */}
       {snippetModalOpen && (

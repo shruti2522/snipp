@@ -54,9 +54,9 @@ export default function Features() {
           ].map((item, index) => (
             <div
               key={index}
-              className="flex flex-col items-center p-6 space-y-4 bg-black/20 rounded-lg border border-transparent hover:border-indigo-400 hover:bg-black/30 hover:scale-[1.02] transition-all"
+              className="flex flex-col items-center p-6 space-y-4 bg-black/20 rounded-lg border border-transparent hover:border-purple-400 hover:bg-black/30 hover:scale-[1.02] transition-all"
             >
-              <div className="text-indigo-400">{item.icon}</div>
+              <div className="text-purple-400">{item.icon}</div>
               <h3 className="text-xl font-semibold">{item.title}</h3>
               <p className="text-center text-sm text-gray-300">{item.text}</p>
             </div>

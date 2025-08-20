@@ -36,7 +36,7 @@ export default function SnippetsPreview({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
-
+ 
   // Search + Language filter
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -256,7 +256,7 @@ export default function SnippetsPreview({
           <style jsx>{`
             .scrollbar-indigo {
               scrollbar-width: thin;
-              scrollbar-color: rgba(99, 102, 241, 0.6) transparent;
+              scrollbar-color: rgba(68, 68, 70, 0.6) transparent;
             }
             .scrollbar-indigo::-webkit-scrollbar {
               width: 4px;

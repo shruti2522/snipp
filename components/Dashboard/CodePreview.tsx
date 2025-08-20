@@ -2,7 +2,7 @@
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useState, useEffect } from "react";
-import { FiCopy, FiEdit } from "react-icons/fi";
+import { FiCopy, FiEdit, FiCheck } from "react-icons/fi";
 
 export default function CodePreview({
   snippet,
@@ -172,8 +172,16 @@ export default function CodePreview({
           <span className="lowercase tracking-wide">{localSnippet.language || "plaintext"}</span>
           <div className="flex items-center gap-2">
             <button onClick={handleCopy} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition">
-              <FiCopy size={14} />
-              {copied ? "Copied" : "Copy"}
+              
+              {copied ? (
+                <>
+                  <FiCheck size={14} /> Copied
+                </>
+              ) : (
+                <>
+                  <FiCopy size={14} /> Copy
+                </>
+              )}
             </button>
 
             {!isEditing ? (
