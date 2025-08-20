@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { FaPlus } from "react-icons/fa";
 import DeleteWorkspaceModal from "./Cards/DeleteWorkspaceModal";
+import RenameWorkspaceModal from "./Cards/RenameWorkspaceModal";
 
 export default function Workspaces({
   workspaces,
@@ -28,6 +29,12 @@ export default function Workspaces({
   }>({ visible: false, x: 0, y: 0, workspace: null });
 
   const [deleteModal, setDeleteModal] = useState<{
+    open: boolean;
+    workspace: any | null;
+    loading: boolean;
+  }>({ open: false, workspace: null, loading: false });
+
+  const [renameModal, setRenameModal] = useState<{
     open: boolean;
     workspace: any | null;
     loading: boolean;
@@ -74,12 +81,18 @@ export default function Workspaces({
     }
   };
 
-  // --- RENAME WORKSPACE ---
-  const renameWorkspace = async (workspace: any) => {
-    const newName = prompt("Enter new workspace name:", workspace.name);
-    if (!newName || !newName.trim()) return;
+  // --- OPEN RENAME MODAL ---
+  const openRenameModal = (workspace: any) => {
+    setRenameModal({ open: true, workspace, loading: false });
+    closeContextMenu();
+  };
+
+  // --- CONFIRM RENAME ---
+  const handleRenameConfirm = async (newName: string) => {
+    if (!renameModal.workspace) return;
+    setRenameModal((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await fetch(`/api/workspaces/${workspace.id}`, {
+      const res = await fetch(`/api/workspaces/${renameModal.workspace.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
@@ -87,11 +100,14 @@ export default function Workspaces({
       const updated = await res.json();
       if (res.ok) {
         onWorkspaceCreated?.(updated);
+        setRenameModal({ open: false, workspace: null, loading: false });
       } else {
-        console.error("Failed to rename workspace");
+        console.error("Failed to rename workspace:", updated?.error || updated);
+        setRenameModal((prev) => ({ ...prev, loading: false }));
       }
     } catch (err) {
       console.error(err);
+      setRenameModal((prev) => ({ ...prev, loading: false }));
     }
   };
 
@@ -280,10 +296,7 @@ export default function Workspaces({
         >
           <li
             className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors"
-            onClick={() => {
-              renameWorkspace(contextMenu.workspace);
-              closeContextMenu();
-            }}
+            onClick={() => openRenameModal(contextMenu.workspace)}
           >
             Rename
           </li>
@@ -303,6 +316,15 @@ export default function Workspaces({
         loading={deleteModal.loading}
         onClose={() => setDeleteModal({ open: false, workspace: null, loading: false })}
         onConfirm={handleDeleteConfirm}
+      />
+
+      {/* Rename Modal */}
+      <RenameWorkspaceModal
+        open={renameModal.open}
+        loading={renameModal.loading}
+        currentName={renameModal.workspace?.name ?? ""}
+        onClose={() => setRenameModal({ open: false, workspace: null, loading: false })}
+        onConfirm={handleRenameConfirm}
       />
     </aside>
   );
