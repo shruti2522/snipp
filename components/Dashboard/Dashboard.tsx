@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Workspaces from "./Workspaces";
 import CollectionSidebar from "./CollectionSidebar";
 import SnippetsPreview from "./SnippetsPreview";
@@ -18,6 +18,9 @@ export default function Dashboard() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [previewVersion, setPreviewVersion] = useState(0);
 
+  // NEW: workspace-level loading state
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+
   // Load workspaces on mount
   useEffect(() => {
     fetch("/api/workspaces")
@@ -29,20 +32,56 @@ export default function Dashboard() {
       .catch((err) => console.error("Failed to load workspaces:", err));
   }, []);
 
-  // Fetch collections whenever workspace changes
+  // Fetch collections + initial snippets whenever workspace changes (shows workspaceLoading)
   useEffect(() => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace) {
+      setCollections([]);
+      setSelectedCollection(null);
+      setSnippets([]);
+      setSelectedSnippet(null);
+      return;
+    }
 
-    fetch(`/api/collections?workspaceId=${selectedWorkspace}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setCollections(data);
-        setSelectedCollection(Array.isArray(data) && data.length > 0 ? data[0].id : null);
-      })
-      .catch((err) => console.error("Failed to load collections:", err));
+    let cancelled = false;
+
+    const fetchCollectionsAndInitialSnippets = async (workspaceId: number) => {
+      try {
+        setWorkspaceLoading(true);
+        // fetch collections
+        const colRes = await fetch(`/api/collections?workspaceId=${workspaceId}`);
+        const colData = await colRes.json();
+        if (cancelled) return;
+        setCollections(colData);
+
+        const firstCollectionId = Array.isArray(colData) && colData.length > 0 ? colData[0].id : null;
+        setSelectedCollection(firstCollectionId);
+
+        if (firstCollectionId) {
+          // fetch snippets for that collection
+          const snipRes = await fetch(`/api/snippets?collectionId=${firstCollectionId}`);
+          const snipData = await snipRes.json();
+          if (cancelled) return;
+          setSnippets(snipData);
+          setSelectedSnippet(Array.isArray(snipData) && snipData.length > 0 ? snipData[0] : null);
+        } else {
+          setSnippets([]);
+          setSelectedSnippet(null);
+        }
+      } catch (err) {
+        console.error("Failed to load collections/snippets for workspace:", err);
+      } finally {
+        if (!cancelled) setWorkspaceLoading(false);
+      }
+    };
+
+    fetchCollectionsAndInitialSnippets(selectedWorkspace);
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedWorkspace]);
 
-  // Fetch snippets whenever collection changes
+  // Fetch snippets whenever collection changes (not workspaceLoading — this is collection-level)
   useEffect(() => {
     if (!selectedCollection) {
       setSnippets([]);
@@ -50,25 +89,55 @@ export default function Dashboard() {
       return;
     }
 
-    fetch(`/api/snippets?collectionId=${selectedCollection}`)
-      .then((r) => r.json())
-      .then((data) => {
+    let cancelled = false;
+    const fetchSnippetsForCollection = async (collectionId: number) => {
+      try {
+        const res = await fetch(`/api/snippets?collectionId=${collectionId}`);
+        const data = await res.json();
+        if (cancelled) return;
         setSnippets(data);
         setSelectedSnippet(Array.isArray(data) && data.length > 0 ? data[0] : null);
-      })
-      .catch((err) => console.error("Failed to load snippets:", err));
+      } catch (err) {
+        console.error("Failed to load snippets:", err);
+      }
+    };
+
+    fetchSnippetsForCollection(selectedCollection);
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCollection]);
 
   // --- Workspace selection ---
   const handleSelectWorkspace = (workspaceId: number) => {
     if (workspaceId === selectedWorkspace) {
-      // Force refetch of collections even if same workspace
+      // Force refetch of collections + initial snippets even if same workspace
+      // Trigger the same flow as the selectedWorkspace effect by temporarily toggling
+      // Alternatively call the same fetch logic here:
+      setWorkspaceLoading(true);
       fetch(`/api/collections?workspaceId=${workspaceId}`)
         .then((r) => r.json())
         .then((data) => {
           setCollections(data);
-          setSelectedCollection(Array.isArray(data) && data.length > 0 ? data[0].id : null);
-        });
+          const firstCollectionId = Array.isArray(data) && data.length > 0 ? data[0].id : null;
+          setSelectedCollection(firstCollectionId);
+          if (!firstCollectionId) {
+            setSnippets([]);
+            setSelectedSnippet(null);
+            setWorkspaceLoading(false);
+            return;
+          }
+          return fetch(`/api/snippets?collectionId=${firstCollectionId}`);
+        })
+        .then(async (r) => {
+          if (!r) return;
+          const snips = await r.json();
+          setSnippets(snips);
+          setSelectedSnippet(Array.isArray(snips) && snips.length > 0 ? snips[0] : null);
+        })
+        .catch((err) => console.error("Failed to refetch workspace data:", err))
+        .finally(() => setWorkspaceLoading(false));
       return;
     }
     setSelectedWorkspace(workspaceId);
@@ -144,7 +213,13 @@ export default function Dashboard() {
       const res = await fetch("/api/snippets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description: "", code: "", language: "javascript", collectionId: selectedCollection }),
+        body: JSON.stringify({
+          title,
+          description: "",
+          code: "",
+          language: "javascript",
+          collectionId: selectedCollection,
+        }),
       });
       if (res.ok) {
         const newSnippet = await res.json();
@@ -190,6 +265,7 @@ export default function Dashboard() {
           onEditSnippet={handleUpdateSnippet}
           onDeleteSnippet={handleDeleteSnippet}
           selectedSnippetId={selectedSnippet?.id}
+          workspaceLoading={workspaceLoading} // <-- NEW PROP
         />
       </div>
 

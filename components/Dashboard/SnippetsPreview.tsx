@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaEllipsisV, FaEdit, FaTrash } from "react-icons/fa";
 import {
@@ -12,8 +12,10 @@ import {
   SiCplusplus,
   SiRust,
 } from "react-icons/si";
-import DeleteSnippetModal from "./Cards/DeleteSnippetModal";
-import EditSnippetModal from "./Cards/EditSnippetModal";
+
+// lazy-load modals (code-splitting)
+const DeleteSnippetModal = lazy(() => import("./Cards/DeleteSnippetModal"));
+const EditSnippetModal = lazy(() => import("./Cards/EditSnippetModal"));
 
 export default function SnippetsPreview({
   snippets,
@@ -21,12 +23,14 @@ export default function SnippetsPreview({
   onSelectSnippet,
   onEditSnippet,
   onDeleteSnippet,
+  workspaceLoading = false, // ⟵ NEW PROP
 }: {
   snippets: any[];
   selectedSnippetId?: any;
   onSelectSnippet: (snippet: any) => void;
   onEditSnippet?: (snippet: any) => void;
   onDeleteSnippet?: (snippet: any) => void;
+  workspaceLoading?: boolean; // ⟵ NEW PROP
 }) {
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [editingSnippet, setEditingSnippet] = useState<any | null>(null);
@@ -36,20 +40,20 @@ export default function SnippetsPreview({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
- 
+
   // Search + Language filter
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedLang, setSelectedLang] = useState("All");
   const [filteredSnippets, setFilteredSnippets] = useState<any[]>(snippets ?? []);
 
- const languages = Array.from(
-  new Set(
-    Array.isArray(snippets)
-      ? snippets.map((s) => (s.language ?? "").toString().trim()).filter(Boolean)
-      : []
-  )
-);
+  const languages = Array.from(
+    new Set(
+      Array.isArray(snippets)
+        ? snippets.map((s) => (s.language ?? "").toString().trim()).filter(Boolean)
+        : []
+    )
+  );
 
   useEffect(() => {
     setQuery("");
@@ -209,6 +213,22 @@ export default function SnippetsPreview({
     return slice.join("\n") + (more ? "\n..." : "");
   };
 
+  // simple modal fallback spinner
+  const ModalFallback = () => (
+    <div className="w-8 h-8 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+  );
+
+  // ---------------------------
+  // SIMPLE LOADER GATE
+  // ---------------------------
+  if (workspaceLoading) {
+    return (
+      <section className="h-full border-r border-gray-800 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+      </section>
+    );
+  }
+
   return (
     <>
       <section className="h-full border-r border-gray-800 flex flex-col">
@@ -284,32 +304,32 @@ export default function SnippetsPreview({
             <div className="h-full grid place-items-center text-gray-400">
               <div className="flex flex-col items-center">
                 <svg
-          viewBox="0 -0.5 25 25"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-24 h-24 mb-4 opacity-80"
-        >
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M5.5 11.493C5.50364 8.39226 7.69698 5.72579 10.7388 5.12416C13.7807 4.52253 16.8239 6.15327 18.0077 9.0192C19.1915 11.8851 18.186 15.1881 15.6063 16.9085C13.0265 18.6288 9.59077 18.2874 7.4 16.093C6.18148 14.8725 5.49799 13.2177 5.5 11.493Z"
-            stroke="#d6d7dc"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M16.062 16.568L19.5 19.993"
-            stroke="#d6d7dc"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M10.5303 8.96271C10.2374 8.66982 9.76256 8.66982 9.46967 8.96271C9.17678 9.25561 9.17678 9.73048 9.46967 10.0234L10.5303 8.96271ZM11.4697 12.0234C11.7626 12.3163 12.2374 12.3163 12.5303 12.0234C12.8232 11.7305 12.8232 11.2556 12.5303 10.9627L11.4697 12.0234ZM12.5303 10.9627C12.2374 10.6698 11.7626 10.6698 11.4697 10.9627C11.1768 11.2556 11.1768 11.7305 11.4697 12.0234L12.5303 10.9627ZM13.4697 14.0234C13.7626 14.3163 14.2374 14.3163 14.5303 14.0234C14.8232 13.7305 14.8232 13.2556 14.5303 12.9627L13.4697 14.0234ZM12.5303 12.0234C12.8232 11.7305 12.8232 11.2556 12.5303 10.9627C12.2374 10.6698 11.7626 10.6698 11.4697 10.9627L12.5303 12.0234ZM9.46967 12.9627C9.17678 13.2556 9.17678 13.7305 9.46967 14.0234C9.76256 14.3163 10.2374 14.3163 10.5303 14.0234L9.46967 12.9627ZM11.4697 10.9627C11.1768 11.2556 11.1768 11.7305 11.4697 12.0234C11.7626 12.3163 12.2374 12.3163 12.5303 12.0234L11.4697 10.9627ZM14.5303 10.0234C14.8232 9.73048 14.8232 9.25561 14.5303 8.96271C14.2374 8.66982 13.7626 8.66982 13.4697 8.96271L14.5303 10.0234ZM9.46967 10.0234L11.4697 12.0234L12.5303 10.9627L10.5303 8.96271L9.46967 10.0234ZM11.4697 12.0234L13.4697 14.0234L14.5303 12.9627L12.5303 10.9627L11.4697 12.0234ZM11.4697 10.9627L9.46967 12.9627L10.5303 14.0234L12.5303 12.0234L11.4697 10.9627ZM12.5303 12.0234L14.5303 10.0234L13.4697 8.96271L11.4697 10.9627L12.5303 12.0234Z"
-            fill="#d6d7dc"
-          />
-        </svg>
+                  viewBox="0 -0.5 25 25"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-24 h-24 mb-4 opacity-80"
+                >
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M5.5 11.493C5.50364 8.39226 7.69698 5.72579 10.7388 5.12416C13.7807 4.52253 16.8239 6.15327 18.0077 9.0192C19.1915 11.8851 18.186 15.1881 15.6063 16.9085C13.0265 18.6288 9.59077 18.2874 7.4 16.093C6.18148 14.8725 5.49799 13.2177 5.5 11.493Z"
+                    stroke="#d6d7dc"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M16.062 16.568L19.5 19.993"
+                    stroke="#d6d7dc"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M10.5303 8.96271C10.2374 8.66982 9.76256 8.66982 9.46967 8.96271C9.17678 9.25561 9.17678 9.73048 9.46967 10.0234L10.5303 8.96271ZM11.4697 12.0234C11.7626 12.3163 12.2374 12.3163 12.5303 12.0234C12.8232 11.7305 12.8232 11.2556 12.5303 10.9627L11.4697 12.0234ZM12.5303 10.9627C12.2374 10.6698 11.7626 10.6698 11.4697 10.9627C11.1768 11.2556 11.1768 11.7305 11.4697 12.0234L12.5303 10.9627ZM13.4697 14.0234C13.7626 14.3163 14.2374 14.3163 14.5303 14.0234C14.8232 13.7305 14.8232 13.2556 14.5303 12.9627L13.4697 14.0234ZM12.5303 12.0234C12.8232 11.7305 12.8232 11.2556 12.5303 10.9627C12.2374 10.6698 11.7626 10.6698 11.4697 10.9627L12.5303 12.0234ZM9.46967 12.9627C9.17678 13.2556 9.17678 13.7305 9.46967 14.0234C9.76256 14.3163 10.5303 14.3163 10.4697 14.0234L9.46967 12.9627ZM11.4697 10.9627C11.1768 11.2556 11.1768 11.7305 11.4697 12.0234C11.7626 12.3163 12.2374 12.3163 12.5303 12.0234L11.4697 10.9627ZM14.5303 10.0234C14.8232 9.73048 14.8232 9.25561 14.5303 8.96271C14.2374 8.66982 13.7626 8.66982 13.4697 8.96271L14.5303 10.0234ZM9.46967 10.0234L11.4697 12.0234L12.5303 10.9627L10.5303 8.96271L9.46967 10.0234ZM11.4697 12.0234L13.4697 14.0234L14.5303 12.9627L12.5303 10.9627L11.4697 12.0234ZM11.4697 10.9627L9.46967 12.9627L10.5303 14.0234L12.5303 12.0234L11.4697 10.9627ZM12.5303 12.0234L14.5303 10.0234L13.4697 8.96271L11.4697 10.9627L12.5303 12.0234Z"
+                    fill="#d6d7dc"
+                  />
+                </svg>
                 <p className="text-sm">No snippets match your search or filter.</p>
               </div>
             </div>
@@ -427,28 +447,35 @@ export default function SnippetsPreview({
           )}
         </div>
 
-        {/* Delete confirmation modal */}
-        <DeleteSnippetModal
-          open={deleteModalOpen}
-          loading={deleting}
-          snippetName={deleteTarget?.title ?? ""}
-          onClose={() => {
-            if (!deleting) {
-              setDeleteModalOpen(false);
-              setDeleteTarget(null);
-            }
-          }}
-          onConfirm={confirmDelete}
-        />
+        {/* Delete confirmation modal (lazy, Suspense-wrapped) */}
+        {deleteModalOpen && (
+          <Suspense fallback={<ModalFallback />}>
+            <DeleteSnippetModal
+              open={deleteModalOpen}
+              loading={deleting}
+              snippetName={deleteTarget?.title ?? ""}
+              onClose={() => {
+                if (!deleting) {
+                  setDeleteModalOpen(false);
+                  setDeleteTarget(null);
+                }
+              }}
+              onConfirm={confirmDelete}
+            />
+          </Suspense>
+        )}
       </section>
 
+      {/* Edit modal (lazy, Suspense-wrapped) */}
       {editingSnippet && (
-        <EditSnippetModal
-          isOpen={!!editingSnippet}
-          onClose={() => setEditingSnippet(null)}
-          snippet={editingSnippet}
-          onUpdated={handleUpdatedSnippet}
-        />
+        <Suspense fallback={<ModalFallback />}>
+          <EditSnippetModal
+            isOpen={!!editingSnippet}
+            onClose={() => setEditingSnippet(null)}
+            snippet={editingSnippet}
+            onUpdated={handleUpdatedSnippet}
+          />
+        </Suspense>
       )}
     </>
   );
