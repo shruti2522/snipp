@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 
+import Providers from "@/components/Providers";
+import { LoaderProvider } from "@/components/Loader/LoaderContext";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -35,8 +37,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${poppins.variable} ${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children} 
+      > <LoaderProvider>
+        <Providers>{children}</Providers> 
+		</LoaderProvider>
       </body>
     </html>
   );

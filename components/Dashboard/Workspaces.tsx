@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { FaPlus } from "react-icons/fa";
+import { signIn, signOut, useSession } from "next-auth/react";
 import DeleteWorkspaceModal from "./Cards/DeleteWorkspaceModal";
 import RenameWorkspaceModal from "./Cards/RenameWorkspaceModal";
 
@@ -18,6 +19,8 @@ export default function Workspaces({
   onAddWorkspace: () => void;
   onWorkspaceCreated?: (ws: any) => void;
 }) {
+  const { data: session } = useSession();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
 
@@ -27,6 +30,12 @@ export default function Workspaces({
     y: number;
     workspace: any | null;
   }>({ visible: false, x: 0, y: 0, workspace: null });
+
+  const [profileMenu, setProfileMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+  }>({ visible: false, x: 0, y: 0 });
 
   const [deleteModal, setDeleteModal] = useState<{
     open: boolean;
@@ -70,6 +79,20 @@ export default function Workspaces({
     return Number.isNaN(n) ? null : n;
   };
 
+  // helper to handle auth responses
+  const handleAuthError = async (res: Response) => {
+    if (res.status === 401) {
+      // not signed in — prompt sign in
+      await signIn();
+      return true;
+    }
+    if (res.status === 403) {
+      console.warn("Forbidden (403) — you don't have permission to perform this action.");
+      return true;
+    }
+    return false;
+  };
+
   // --- CREATE WORKSPACE ---
   const createWorkspace = async () => {
     if (!newWorkspaceName.trim()) return;
@@ -77,16 +100,20 @@ export default function Workspaces({
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin", // important: send auth cookie
         body: JSON.stringify({ name: newWorkspaceName.trim() }),
       });
-      const data = await res.json();
+
+      if (await handleAuthError(res)) return;
+
+      const data = await res.json().catch(() => null);
       if (res.ok) {
         setIsModalOpen(false);
         setNewWorkspaceName("");
         closeContextMenu();
         onWorkspaceCreated?.(data); // pass created workspace back to parent
       } else {
-        console.error("Error creating workspace:", data);
+        console.error("Error creating workspace:", data || res.statusText);
       }
     } catch (err) {
       console.error("Network error:", err);
@@ -114,14 +141,21 @@ export default function Workspaces({
       const res = await fetch(`/api/workspaces?id=${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ name: newName.trim() }),
       });
-      const updated = await res.json();
+
+      if (await handleAuthError(res)) {
+        setRenameModal((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      const updated = await res.json().catch(() => null);
       if (res.ok) {
         onWorkspaceCreated?.(updated); // parent can merge/update the list
         setRenameModal({ open: false, workspace: null, loading: false });
       } else {
-        console.error("Failed to rename workspace:", updated?.error || updated);
+        console.error("Failed to rename workspace:", updated?.error || updated || res.statusText);
         setRenameModal((prev) => ({ ...prev, loading: false }));
       }
     } catch (err) {
@@ -149,7 +183,13 @@ export default function Workspaces({
       // Use DELETE with query param to match the server route (/api/workspaces?id=)
       const res = await fetch(`/api/workspaces?id=${id}`, {
         method: "DELETE",
+        credentials: "same-origin",
       });
+
+      if (await handleAuthError(res)) {
+        setDeleteModal((prev) => ({ ...prev, loading: false }));
+        return;
+      }
 
       if (res.ok) {
         // Inform parent that this workspace was deleted
@@ -182,16 +222,32 @@ export default function Workspaces({
 
   const closeContextMenu = () => setContextMenu({ visible: false, x: 0, y: 0, workspace: null });
 
+  // profile menu handlers
+  const handleProfileContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setProfileMenu({ visible: true, x: e.clientX, y: e.clientY });
+  };
+  const closeProfileMenu = () => setProfileMenu({ visible: false, x: 0, y: 0 });
+
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
+      // close both menus if clicking outside of them
       if (contextMenu.visible) {
         const menuEl = document.getElementById("workspace-context-menu");
         if (menuEl && !menuEl.contains(e.target as Node)) closeContextMenu();
       }
+      if (profileMenu.visible) {
+        const pEl = document.getElementById("profile-context-menu");
+        if (pEl && !pEl.contains(e.target as Node)) closeProfileMenu();
+      }
     };
     document.addEventListener("click", handleGlobalClick);
     return () => document.removeEventListener("click", handleGlobalClick);
-  }, [contextMenu.visible]);
+  }, [contextMenu.visible, profileMenu.visible]);
+
+  // profile image or fallback initial
+  const profileImage = session?.user?.image ?? null;
+  const profileInitial = session?.user?.name?.[0] ?? session?.user?.email?.[0] ?? "P";
 
   return (
     <aside className="h-full flex flex-col justify-between bg-[#141820] border-r border-gray-800">
@@ -231,7 +287,7 @@ export default function Workspaces({
             const isSelected = idNum !== null && selectedWorkspace === idNum;
             return (
               <div
-                key={`${String(ws.id)}-${i}`}
+                key={String(ws.id) ?? `ws-${i}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectWorkspace(idNum);
@@ -245,13 +301,11 @@ export default function Workspaces({
                 bg-gradient-to-r ${gradients[i % gradients.length]}
                 ${isSelected
                   ? "border-2 border-white shadow-lg scale-110"
-                  : "hover:scale-105 hover:shadow-md hover:brightness-110"}
-              `}
+                  : "hover:scale-105 hover:shadow-md hover:brightness-110"}`}
               >
                 <span
                   className={`font-extrabold text-2xl tracking-wider drop-shadow-[0_0_10px_rgba(147,51,234,0.9)]
-                  ${isSelected ? "text-white" : "text-gray-100"}
-                `}
+                  ${isSelected ? "text-white" : "text-gray-100"}`}
                 >
                   {ws.name?.[0] ?? "W"}
                 </span>
@@ -274,8 +328,18 @@ export default function Workspaces({
 
       {/* Profile */}
       <div className="flex items-center justify-center h-16 border-t border-gray-800 mb-2">
-        <div className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-white text-lg font-bold">
-          P
+        <div
+          id="profile-button"
+          onContextMenu={handleProfileContextMenu}
+          className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-white text-lg font-bold cursor-pointer overflow-hidden"
+          title={session?.user?.email ?? "Profile"}
+        >
+          {profileImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profileImage} alt="profile" className="w-full h-full object-cover" />
+          ) : (
+            <span>{profileInitial}</span>
+          )}
         </div>
       </div>
 
@@ -336,6 +400,28 @@ export default function Workspaces({
             onClick={() => confirmDeleteWorkspace(contextMenu.workspace)}
           >
             Delete
+          </li>
+        </ul>
+      )}
+
+      {/* Profile Context Menu */}
+      {profileMenu.visible && (
+        <ul
+          id="profile-context-menu"
+          className="fixed bg-[#1f2028] border border-gray-700 rounded shadow-lg text-white z-50 py-1 min-w-[160px]"
+          style={{ top: profileMenu.y, left: profileMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <li
+            className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors"
+            onClick={() => {
+              // close menu first for UX
+              closeProfileMenu();
+              // sign out and redirect to sign in page
+              signOut({ callbackUrl: "/login" });
+            }}
+          >
+            Sign out
           </li>
         </ul>
       )}
