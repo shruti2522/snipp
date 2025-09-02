@@ -9,10 +9,8 @@ const prisma = new PrismaClient();
 async function getCurrentUserId(session: any) {
   if (!session) return null;
 
-  // Preferred: session.user.id (if you add it in callbacks)
   if (session.user?.id) return session.user.id as string;
 
-  // Fallback: find user by email
   if (session.user?.email) {
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -42,8 +40,17 @@ export async function GET(req: Request) {
 
     if (!id) {
       const workspaces = await prisma.workspace.findMany({
-        where: { ownerId: userId },
-        orderBy: { id: "desc" }, // or createdAt
+        where: {
+          OR: [
+            { ownerId: userId },
+            { sharedWith: { some: { id: userId } } },
+          ],
+        },
+        orderBy: { id: "desc" },
+        include: {
+          owner: { select: { id: true, email: true, name: true } },
+          sharedWith: { select: { id: true, email: true, name: true } },
+        },
       });
       return NextResponse.json(workspaces, { status: 200 });
     }
@@ -53,12 +60,23 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid workspace id" }, { status: 400 });
     }
 
+    // Allow owner OR a user included in sharedWith to get the workspace
     const workspace = await prisma.workspace.findFirst({
-      where: { id: numericId, ownerId: userId },
+      where: {
+        id: numericId,
+        OR: [
+          { ownerId: userId },
+          { sharedWith: { some: { id: userId } } },
+        ],
+      },
+      include: {
+        owner: { select: { id: true, email: true, name: true } },
+        sharedWith: { select: { id: true, email: true, name: true } },
+      },
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
     return NextResponse.json(workspace, { status: 200 });
@@ -90,6 +108,10 @@ export async function POST(req: Request) {
 
     const workspace = await prisma.workspace.create({
       data: { name, ownerId: userId },
+      include: {
+        owner: { select: { id: true, email: true, name: true } },
+        sharedWith: { select: { id: true, email: true, name: true } },
+      },
     });
 
     return NextResponse.json(workspace, { status: 201 });
@@ -125,7 +147,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Invalid workspace id" }, { status: 400 });
     }
 
-    // Ensure the workspace exists and belongs to this user
+    // Ensure the workspace exists
     const existing = await prisma.workspace.findUnique({ where: { id: numericId } });
 
     if (!existing) {
@@ -139,6 +161,10 @@ export async function PUT(req: Request) {
     const updated = await prisma.workspace.update({
       where: { id: numericId },
       data: { name: name.trim() },
+      include: {
+        owner: { select: { id: true, email: true, name: true } },
+        sharedWith: { select: { id: true, email: true, name: true } },
+      },
     });
 
     return NextResponse.json(updated, { status: 200 });

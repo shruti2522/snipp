@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FaPlus } from "react-icons/fa";
+import { FaPlus, FaShareAlt, FaUserFriends, FaUserPlus, FaUsers } from "react-icons/fa";
 import { signIn, signOut, useSession } from "next-auth/react";
 import DeleteWorkspaceModal from "./Cards/DeleteWorkspaceModal";
 import RenameWorkspaceModal from "./Cards/RenameWorkspaceModal";
+import ShareWorkspaceModal from "./Cards/ShareWorkspaceModal";
+import ProfileMenu from "./ProfileMenu";
 
 export default function Workspaces({
   workspaces,
@@ -31,23 +33,31 @@ export default function Workspaces({
     workspace: any | null;
   }>({ visible: false, x: 0, y: 0, workspace: null });
 
-  const [profileMenu, setProfileMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-  }>({ visible: false, x: 0, y: 0 });
+  const [profileMenu, setProfileMenu] = useState<{ visible: boolean; x: number; y: number }>(
+    { visible: false, x: 0, y: 0 }
+  );
 
-  const [deleteModal, setDeleteModal] = useState<{
-    open: boolean;
-    workspace: any | null;
-    loading: boolean;
-  }>({ open: false, workspace: null, loading: false });
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; workspace: any | null; loading: boolean }>(
+    { open: false, workspace: null, loading: false }
+  );
 
-  const [renameModal, setRenameModal] = useState<{
-    open: boolean;
-    workspace: any | null;
-    loading: boolean;
-  }>({ open: false, workspace: null, loading: false });
+  const [renameModal, setRenameModal] = useState<{ open: boolean; workspace: any | null; loading: boolean }>(
+    { open: false, workspace: null, loading: false }
+  );
+
+  const [shareModal, setShareModal] = useState<{ open: boolean; workspace: any | null; loading: boolean }>(
+    { open: false, workspace: null, loading: false }
+  );
+
+  const [sharedUsersModal, setSharedUsersModal] = useState<{
+  open: boolean;
+  workspace: Workspace | null;
+}>({ open: false, workspace: null });
+
+const openSharedUsersModal = (workspace: Workspace) => {
+  setSharedUsersModal({ open: true, workspace });
+  closeContextMenu();
+};
 
   const gradients = [
     "from-indigo-900 to-purple-800",
@@ -68,10 +78,21 @@ export default function Workspaces({
     "from-gray-900 to-blue-800",
   ];
 
-  // Normalize workspaces to an array (defensive)
+  type User = {
+	id: string;
+	name: string;
+	email?: string;
+	};
+
+	type Workspace = {
+	id: string;
+	name: string;
+	sharedWith?: User[];  
+	sharedBy?: User;       
+	};
+
   const wsList = Array.isArray(workspaces) ? workspaces : [];
 
-  // helper to normalize id to number|null
   const normalizeId = (id: any): number | null => {
     if (id === null || id === undefined) return null;
     if (typeof id === "number") return id;
@@ -79,10 +100,8 @@ export default function Workspaces({
     return Number.isNaN(n) ? null : n;
   };
 
-  // helper to handle auth responses
   const handleAuthError = async (res: Response) => {
     if (res.status === 401) {
-      // not signed in — prompt sign in
       await signIn();
       return true;
     }
@@ -100,7 +119,7 @@ export default function Workspaces({
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "same-origin", // important: send auth cookie
+        credentials: "same-origin",
         body: JSON.stringify({ name: newWorkspaceName.trim() }),
       });
 
@@ -111,7 +130,7 @@ export default function Workspaces({
         setIsModalOpen(false);
         setNewWorkspaceName("");
         closeContextMenu();
-        onWorkspaceCreated?.(data); // pass created workspace back to parent
+        onWorkspaceCreated?.(data);
       } else {
         console.error("Error creating workspace:", data || res.statusText);
       }
@@ -120,13 +139,12 @@ export default function Workspaces({
     }
   };
 
-  // --- OPEN RENAME MODAL ---
+  // --- RENAME ---
   const openRenameModal = (workspace: any) => {
     setRenameModal({ open: true, workspace, loading: false });
     closeContextMenu();
   };
 
-  // --- CONFIRM RENAME ---
   const handleRenameConfirm = async (newName: string) => {
     if (!renameModal.workspace) return;
     const id = normalizeId(renameModal.workspace.id);
@@ -137,7 +155,6 @@ export default function Workspaces({
 
     setRenameModal((prev) => ({ ...prev, loading: true }));
     try {
-      // Use PUT with query param to match the server route (/api/workspaces?id=)
       const res = await fetch(`/api/workspaces?id=${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -152,7 +169,7 @@ export default function Workspaces({
 
       const updated = await res.json().catch(() => null);
       if (res.ok) {
-        onWorkspaceCreated?.(updated); // parent can merge/update the list
+        onWorkspaceCreated?.(updated);
         setRenameModal({ open: false, workspace: null, loading: false });
       } else {
         console.error("Failed to rename workspace:", updated?.error || updated || res.statusText);
@@ -164,7 +181,49 @@ export default function Workspaces({
     }
   };
 
-  // --- DELETE WORKSPACE ---
+  // --- SHARE ---
+  const openShareModal = (workspace: any) => {
+    setShareModal({ open: true, workspace, loading: false });
+    closeContextMenu();
+  };
+
+  const handleShareConfirm = async (email: string) => {
+    if (!shareModal.workspace) return;
+    const id = normalizeId(shareModal.workspace.id);
+    if (id === null) {
+      console.error("Invalid workspace id for share");
+      return;
+    }
+
+    setShareModal((prev) => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/workspaces/share?id=${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      if (await handleAuthError(res)) {
+        setShareModal((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      const updated = await res.json().catch(() => null);
+      if (res.ok) {
+        onWorkspaceCreated?.(updated);
+        setShareModal({ open: false, workspace: null, loading: false });
+      } else {
+        console.error("Failed to share workspace:", updated?.error || updated || res.statusText);
+        setShareModal((prev) => ({ ...prev, loading: false }));
+      }
+    } catch (err) {
+      console.error(err);
+      setShareModal((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // --- DELETE ---
   const confirmDeleteWorkspace = (workspace: any) => {
     setDeleteModal({ open: true, workspace, loading: false });
     closeContextMenu();
@@ -180,7 +239,6 @@ export default function Workspaces({
 
     setDeleteModal((prev) => ({ ...prev, loading: true }));
     try {
-      // Use DELETE with query param to match the server route (/api/workspaces?id=)
       const res = await fetch(`/api/workspaces?id=${id}`, {
         method: "DELETE",
         credentials: "same-origin",
@@ -192,10 +250,8 @@ export default function Workspaces({
       }
 
       if (res.ok) {
-        // Inform parent that this workspace was deleted
         onWorkspaceCreated?.({ id, deleted: true });
 
-        // If deleted workspace was selected, select next available
         if (selectedWorkspace === id) {
           const remaining = wsList.filter((ws) => normalizeId(ws.id) !== id);
           const nextSelected = normalizeId(remaining[0]?.id) ?? null;
@@ -231,7 +287,6 @@ export default function Workspaces({
 
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      // close both menus if clicking outside of them
       if (contextMenu.visible) {
         const menuEl = document.getElementById("workspace-context-menu");
         if (menuEl && !menuEl.contains(e.target as Node)) closeContextMenu();
@@ -245,15 +300,97 @@ export default function Workspaces({
     return () => document.removeEventListener("click", handleGlobalClick);
   }, [contextMenu.visible, profileMenu.visible]);
 
-  // profile image or fallback initial
   const profileImage = session?.user?.image ?? null;
   const profileInitial = session?.user?.name?.[0] ?? session?.user?.email?.[0] ?? "P";
+
+  // Robust isOwner check: prefer session.user.id when available, fall back to email comparisons
+  const isOwner = (ws: any) => {
+    if (!ws) return false;
+    const sessionUser = session?.user;
+    if (!sessionUser) return false;
+
+    // prefer id if available in session
+    if (sessionUser.id) {
+      const sid = String(sessionUser.id);
+      if (ws.ownerId !== undefined && ws.ownerId !== null) {
+        if (String(ws.ownerId) === sid) return true;
+      }
+      if (ws.owner?.id !== undefined && ws.owner?.id !== null) {
+        if (String(ws.owner.id) === sid) return true;
+      }
+    }
+
+    // fallback to comparing emails (case-insensitive)
+    const sEmail = (sessionUser.email ?? "").toLowerCase();
+    if (sEmail) {
+      if (ws.ownerEmail && String(ws.ownerEmail).toLowerCase() === sEmail) return true;
+      if (ws.owner?.email && String(ws.owner.email).toLowerCase() === sEmail) return true;
+      // edge-case: owner stored as string id but equal to email (unlikely) handled below
+    }
+
+    // edge-case: workspace.owner might be the id string
+    if (typeof ws.owner === "string" && sessionUser.id) {
+      if (String(ws.owner) === String(sessionUser.id)) return true;
+    }
+
+    return false;
+  };
+
+  const sharedCount = (ws: any) => {
+    if (!ws) return 0;
+    if (Array.isArray(ws.sharedWith)) return ws.sharedWith.length;
+    if (typeof ws.sharedWith === "string") return ws.sharedWith ? ws.sharedWith.split(",").length : 0;
+    return 0;
+  };
+
+  // Helper function to determine sharing status
+  const getSharingStatus = (ws: any) => {
+    const owner = isOwner(ws);
+    const shared = sharedCount(ws) > 0;
+    
+    // Debug logging
+    console.log('Workspace:', ws.name, {
+      owner,
+      shared,
+      sharedWith: ws.sharedWith,
+      sharedCount: sharedCount(ws),
+      ownerId: ws.ownerId,
+      sessionUserId: session?.user?.id
+    });
+    
+    if (owner && shared) {
+      return 'sharedByMe'; // I own it and have shared it with others
+    } else if (!owner && shared) {
+      return 'sharedWithMe'; // Someone else owns it, shared with me
+    }
+    return null; // No sharing indicators needed
+  };
+
+  const getSharedByTooltip = (ws: Workspace): string => {
+  if (!ws.sharedWith || ws.sharedWith.length === 0) return "Not shared";
+  if (ws.sharedWith.length === 1) return `Shared by you with ${ws.sharedWith[0].name}`;
+  return `Shared by you with ${ws.sharedWith.map(u => u.name).join(", ")}`;
+};
+
+const getSharedWithMeTooltip = (ws: Workspace): string => {
+  if (!ws.sharedBy) return "Shared with you";
+  return `Shared with you by ${ws.sharedBy.name}`;
+};
+
 
   return (
     <aside className="h-full flex flex-col justify-between bg-[#141820] border-r border-gray-800">
       {/* Logo */}
       <div className="flex items-center justify-center h-16 border-b border-gray-800">
-        <span className="text-white font-bold text-xl">LOGO</span>
+        <span className="text-white font-bold text-xl">
+			<img 
+				src="logo.png" 
+				alt="Snipp Logo" 
+				width={300} 
+				height={64} 
+				className="object-contain"
+			/>	
+		</span>
       </div>
 
       {/* Workspaces */}
@@ -285,6 +422,8 @@ export default function Workspaces({
           wsList.map((ws, i) => {
             const idNum = normalizeId(ws.id);
             const isSelected = idNum !== null && selectedWorkspace === idNum;
+            const sharingStatus = getSharingStatus(ws);
+
             return (
               <div
                 key={String(ws.id) ?? `ws-${i}`}
@@ -297,11 +436,9 @@ export default function Workspaces({
                   handleContextMenu(e, ws);
                 }}
                 title={ws.name}
-                className={`aspect-square w-6/10 rounded-xl flex items-center justify-center uppercase cursor-pointer select-none transition-all duration-300
+                className={`relative aspect-square w-6/10 rounded-xl flex items-center justify-center uppercase cursor-pointer select-none transition-all duration-300
                 bg-gradient-to-r ${gradients[i % gradients.length]}
-                ${isSelected
-                  ? "border-2 border-white shadow-lg scale-110"
-                  : "hover:scale-105 hover:shadow-md hover:brightness-110"}`}
+                ${isSelected ? "border-2 border-white shadow-lg scale-110" : "hover:scale-105 hover:shadow-md hover:brightness-110"}`}
               >
                 <span
                   className={`font-extrabold text-2xl tracking-wider drop-shadow-[0_0_10px_rgba(147,51,234,0.9)]
@@ -309,6 +446,29 @@ export default function Workspaces({
                 >
                   {ws.name?.[0] ?? "W"}
                 </span>
+
+                {/* Sharing status indicators */}
+               {sharingStatus === "sharedByMe" && (
+  <div
+    className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full flex items-center justify-center border border-white/80 shadow-lg backdrop-blur-sm cursor-pointer"
+    title={getSharedByTooltip(ws)}
+  >
+    <span className="text-black text-[10px] font-bold drop-shadow-sm">
+      {sharedCount(ws)}
+    </span>
+  </div>
+)}
+
+{sharingStatus === "sharedWithMe" && (
+  <div
+    className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-emerald-400 to-green-600 rounded-full flex items-center justify-center border border-white/80 shadow-lg backdrop-blur-sm cursor-pointer"
+    title={getSharedWithMeTooltip(ws)}
+  >
+    <FaUserFriends className="text-white text-[10px] drop-shadow-sm" />
+  </div>
+)}
+
+
               </div>
             );
           })
@@ -327,21 +487,9 @@ export default function Workspaces({
       </div>
 
       {/* Profile */}
-      <div className="flex items-center justify-center h-16 border-t border-gray-800 mb-2">
-        <div
-          id="profile-button"
-          onContextMenu={handleProfileContextMenu}
-          className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-white text-lg font-bold cursor-pointer overflow-hidden"
-          title={session?.user?.email ?? "Profile"}
-        >
-          {profileImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={profileImage} alt="profile" className="w-full h-full object-cover" />
-          ) : (
-            <span>{profileInitial}</span>
-          )}
-        </div>
-      </div>
+		<div className="flex items-center justify-center h-16 border-t border-gray-800 mb-2">
+		<ProfileMenu profileImage={profileImage} profileInitial={profileInitial} />
+		</div>
 
       {/* Create Modal */}
       {isModalOpen && (
@@ -385,7 +533,7 @@ export default function Workspaces({
       {contextMenu.visible && contextMenu.workspace && (
         <ul
           id="workspace-context-menu"
-          className="fixed bg-[#1f2028] border border-gray-700 rounded shadow-lg text-white z-50 py-1 min-w-[120px]"
+          className="fixed bg-[#1f2028] border border-gray-700 rounded shadow-lg text-white z-50 py-1 min-w-[160px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -395,6 +543,29 @@ export default function Workspaces({
           >
             Rename
           </li>
+
+          {/* only owner sees Share */}
+          {isOwner(contextMenu.workspace) && (
+            <li
+              className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors flex items-center gap-2"
+              onClick={() => openShareModal(contextMenu.workspace)}
+            >
+              <FaShareAlt className="text-sm" />
+              <span>Share</span>
+            </li>
+          )}
+
+					{/* ✅ View Shared Users Option */}
+			{(sharedCount(contextMenu.workspace) > 0 || contextMenu.workspace.sharedBy) && (
+			<li
+			className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors flex items-center gap-2"
+			onClick={() => openSharedUsersModal(contextMenu.workspace)}
+			>
+			<FaUserFriends className="text-sm" />
+			<span>View Shared Users</span>
+			</li>
+			)}
+
           <li
             className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors text-red-400 hover:text-red-300"
             onClick={() => confirmDeleteWorkspace(contextMenu.workspace)}
@@ -404,27 +575,7 @@ export default function Workspaces({
         </ul>
       )}
 
-      {/* Profile Context Menu */}
-      {profileMenu.visible && (
-        <ul
-          id="profile-context-menu"
-          className="fixed bg-[#1f2028] border border-gray-700 rounded shadow-lg text-white z-50 py-1 min-w-[160px]"
-          style={{ top: profileMenu.y, left: profileMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <li
-            className="px-4 py-2 cursor-pointer hover:bg-gray-700 transition-colors"
-            onClick={() => {
-              // close menu first for UX
-              closeProfileMenu();
-              // sign out and redirect to sign in page
-              signOut({ callbackUrl: "/login" });
-            }}
-          >
-            Sign out
-          </li>
-        </ul>
-      )}
+      
 
       {/* Delete Modal */}
       <DeleteWorkspaceModal
@@ -443,6 +594,67 @@ export default function Workspaces({
         onClose={() => setRenameModal({ open: false, workspace: null, loading: false })}
         onConfirm={handleRenameConfirm}
       />
+
+      {/* Share Modal (new) */}
+      <ShareWorkspaceModal
+        open={shareModal.open}
+        loading={shareModal.loading}
+        workspace={shareModal.workspace}
+        onClose={() => setShareModal({ open: false, workspace: null, loading: false })}
+        onConfirm={handleShareConfirm}
+      />
+
+	  {/* Shared Users Modal */}
+{sharedUsersModal.open && sharedUsersModal.workspace && (
+  <div
+    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    onClick={(e) => e.target === e.currentTarget && setSharedUsersModal({ open: false, workspace: null })}
+  >
+    <div className="bg-[#1f2028] p-6 rounded-lg w-96 flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
+      <h2 className="text-white text-lg font-bold">Shared Users</h2>
+
+      {/* If shared by me */}
+      {isOwner(sharedUsersModal.workspace) && (
+        <div>
+          <p className="text-gray-300 text-sm mb-2">You shared with:</p>
+          {sharedUsersModal.workspace.sharedWith?.length ? (
+            <ul className="space-y-1">
+              {sharedUsersModal.workspace.sharedWith.map((u) => (
+                <li key={u.id} className="text-white flex items-center gap-2">
+                  <FaUserPlus className="text-xs text-indigo-400" />
+                  <span>{u.name} {u.email && <span className="text-gray-400">({u.email})</span>}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-500 text-sm">No one yet.</p>
+          )}
+        </div>
+      )}
+
+      {/* If shared with me */}
+      {!isOwner(sharedUsersModal.workspace) && sharedUsersModal.workspace.sharedBy && (
+        <div>
+          <p className="text-gray-300 text-sm mb-2">Shared with you by:</p>
+          <div className="text-white flex items-center gap-2">
+            <FaUserFriends className="text-xs text-green-400" />
+            <span>{sharedUsersModal.workspace.sharedBy.name} {sharedUsersModal.workspace.sharedBy.email && <span className="text-gray-400">({sharedUsersModal.workspace.sharedBy.email})</span>}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end mt-4">
+        <button
+          className="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 text-white"
+          onClick={() => setSharedUsersModal({ open: false, workspace: null })}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </aside>
   );
 }

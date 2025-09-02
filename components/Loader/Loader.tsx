@@ -1,15 +1,28 @@
 "use client";
+import React, { useState, useEffect } from "react";
+import Image from "next/image";
 
-import { motion } from "framer-motion";
+const Loader = () => {
+  const [loading, setLoading] = useState(true);
 
-export default function PageLoader() {
+  useEffect(() => {
+    // Hide loader after a short delay (or when page is "ready")
+    const timer = setTimeout(() => setLoading(false), 1500); // adjust time as needed
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!loading) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 pointer-events-none">
-      <motion.div
-        className="w-16 h-16 rounded-full border-4 border-t-blue-500 border-blue-300"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 0.5, repeat: Infinity, ease: "linear" }}
+    <div className="fixed inset-0 flex justify-center items-center z-50 bg-black/40 backdrop-blur-sm">
+      <Image
+        height={200}
+        width={200}
+        src="https://cdn.pixabay.com/animation/2023/10/08/03/19/03-19-26-213_512.gif"
+        alt="Loading"
       />
     </div>
   );
-}
+};
+
+export default Loader;

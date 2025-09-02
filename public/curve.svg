@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="690" height="408" viewBox="0 0 690 408" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="line1-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#fff3fc" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background dashed curve -->
+  <path d="M0,0 Q50,200 345,204 T690,408" 
+        stroke="#C0D1EB" 
+        stroke-width="5" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" 
+        stroke-dasharray="20 20" />
+
+  <!-- Foreground gradient curve -->
+  <path id="line1" 
+        d="M690,408 Q640,208 345,204 Q50,200 0,0" 
+        stroke="url(#line1-gradient)" 
+        stroke-width="5" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" 
+        pathLength="1" 
+        stroke-dashoffset="0px" 
+        stroke-dasharray="0px 1px" />
+</svg>

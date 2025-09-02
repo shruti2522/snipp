@@ -4,6 +4,7 @@ import DashboardGuard from "@/components/Dashboard/DashboardGuard";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import Loader from "@/components/Loader/Loader";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
@@ -15,6 +16,7 @@ export default async function Home() {
 
   return (
     <DashboardGuard>
+		<Loader />
       <Dashboard />
     </DashboardGuard>
   );

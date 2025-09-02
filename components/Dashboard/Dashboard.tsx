@@ -18,10 +18,12 @@ export default function Dashboard() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [previewVersion, setPreviewVersion] = useState(0);
 
-  // NEW: workspace-level loading state
+  const [showWorkspaces, setShowWorkspaces] = useState(false);
+  const [showCollections, setShowCollections] = useState(false);
+
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
-  // Helper: normalize id values to number | null
+  // normalize helper
   const normalizeId = (id: any): number | null => {
     if (id === null || id === undefined) return null;
     if (typeof id === "number") return id;
@@ -29,8 +31,11 @@ export default function Dashboard() {
     return Number.isNaN(n) ? null : n;
   };
 
-  // Fetch collections + initial snippets for a workspace (used in effect & manual re-fetch)
-  const fetchCollectionsAndInitialSnippets = async (workspaceIdNum: number | null, signal?: AbortSignal) => {
+  // fetch collections + initial snippets
+  const fetchCollectionsAndInitialSnippets = async (
+    workspaceIdNum: number | null,
+    signal?: AbortSignal
+  ) => {
     if (workspaceIdNum === null) {
       setCollections([]);
       setSelectedCollection(null);
@@ -42,7 +47,6 @@ export default function Dashboard() {
     try {
       setWorkspaceLoading(true);
 
-      // parallelize collection fetch and (optionally) initial snippet fetch once we know first collection
       const colRes = await fetch(`/api/collections?workspaceId=${workspaceIdNum}`, { signal });
       if (!colRes.ok) throw new Error("Failed to fetch collections");
       const colData = await colRes.json();
@@ -64,9 +68,7 @@ export default function Dashboard() {
         setSelectedSnippet(null);
       }
     } catch (err) {
-      if ((err as any)?.name === "AbortError") {
-        // fetch was aborted; ignore
-      } else {
+      if ((err as any)?.name !== "AbortError") {
         console.error("Failed to load collections/snippets for workspace:", err);
       }
     } finally {
@@ -74,7 +76,7 @@ export default function Dashboard() {
     }
   };
 
-  // Load workspaces on mount
+  // load workspaces on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -86,7 +88,6 @@ export default function Dashboard() {
         const list = Array.isArray(data) ? data : [];
         setWorkspaces(list);
 
-        // select first workspace if none selected
         if (list.length > 0) {
           const id = normalizeId(list[0].id);
           setSelectedWorkspace(id);
@@ -106,9 +107,8 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Fetch collections + initial snippets whenever workspace changes (shows workspaceLoading)
+  // fetch collections when workspace changes
   useEffect(() => {
-    // if selectedWorkspace is null -> clear
     if (selectedWorkspace === null) {
       setCollections([]);
       setSelectedCollection(null);
@@ -120,13 +120,10 @@ export default function Dashboard() {
     const controller = new AbortController();
     fetchCollectionsAndInitialSnippets(selectedWorkspace, controller.signal);
 
-    return () => {
-      controller.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => controller.abort();
   }, [selectedWorkspace]);
 
-  // Fetch snippets whenever collection changes (not workspaceLoading — this is collection-level)
+  // fetch snippets when collection changes
   useEffect(() => {
     if (selectedCollection === null) {
       setSnippets([]);
@@ -139,7 +136,9 @@ export default function Dashboard() {
 
     const fetchSnippetsForCollection = async (collectionIdNum: number) => {
       try {
-        const res = await fetch(`/api/snippets?collectionId=${collectionIdNum}`, { signal: controller.signal });
+        const res = await fetch(`/api/snippets?collectionId=${collectionIdNum}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch snippets");
         const data = await res.json();
         if (cancelled) return;
@@ -147,9 +146,7 @@ export default function Dashboard() {
         setSnippets(arr);
         setSelectedSnippet(arr.length > 0 ? arr[0] : null);
       } catch (err) {
-        if ((err as any)?.name === "AbortError") {
-          // ignore
-        } else {
+        if ((err as any)?.name !== "AbortError") {
           console.error("Failed to load snippets:", err);
         }
       }
@@ -163,10 +160,9 @@ export default function Dashboard() {
     };
   }, [selectedCollection]);
 
-  // --- Workspace selection ---
+  // handlers
   const handleSelectWorkspace = (workspaceId: number | null) => {
     const idNum = normalizeId(workspaceId);
-    // If same workspace clicked, force refetch of collections + initial snippets
     if (idNum !== null && idNum === selectedWorkspace) {
       fetchCollectionsAndInitialSnippets(idNum);
       return;
@@ -174,15 +170,12 @@ export default function Dashboard() {
     setSelectedWorkspace(idNum);
   };
 
-  // --- Workspace creation / update / deletion handler ---
   const handleWorkspaceCreated = (ws: any) => {
     setWorkspaces((prev) => {
-      // deletion signal: { id, deleted: true }
       if (ws?.deleted) {
         return prev.filter((w) => String(w.id) !== String(ws.id));
       }
 
-      // update existing
       const idx = prev.findIndex((w) => String(w.id) === String(ws.id));
       if (idx !== -1) {
         const copy = [...prev];
@@ -190,11 +183,9 @@ export default function Dashboard() {
         return copy;
       }
 
-      // add new workspace (push to front)
       return [ws, ...prev];
     });
 
-    // selection behavior
     if (ws?.deleted) {
       setSelectedWorkspace((cur) => {
         if (String(cur) === String(ws.id)) {
@@ -208,7 +199,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- Snippet handlers ---
   const handleSnippetCreated = (newSnippet: any) => {
     setSnippets((prev: any[]) => [newSnippet, ...prev]);
     setSelectedSnippet(newSnippet);
@@ -217,7 +207,9 @@ export default function Dashboard() {
   const handleUpdateSnippet = (updatedSnippet: any) => {
     const uId = String(updatedSnippet.id);
     setSnippets((prev: any[]) =>
-      prev.some((s) => String(s.id) === uId) ? prev.map((s) => (String(s.id) === uId ? updatedSnippet : s)) : [updatedSnippet, ...prev]
+      prev.some((s) => String(s.id) === uId)
+        ? prev.map((s) => (String(s.id) === uId ? updatedSnippet : s))
+        : [updatedSnippet, ...prev]
     );
     setSelectedSnippet((cur: any) => (cur && String(cur.id) === uId ? updatedSnippet : cur));
   };
@@ -265,9 +257,25 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-[#0E1116] text-white flex-col md:flex-row">
-      {/* Workspaces */}
-      <div className="hidden md:block basis-0 min-w-0" style={{ flex: "0.8 1 0%" }}>
+    <div className="relative flex h-screen bg-[#0E1116] text-white flex-col md:flex-row">
+      {/* Mobile Header */}
+      <div className="flex md:hidden justify-between items-center p-2 bg-[#1A1D24]">
+        <button
+          onClick={() => setShowWorkspaces(true)}
+          className="px-3 py-1 bg-gray-700 rounded-lg"
+        >
+          Workspaces
+        </button>
+        <button
+          onClick={() => setShowCollections(true)}
+          className="px-3 py-1 bg-gray-700 rounded-lg"
+        >
+          Collections
+        </button>
+      </div>
+
+      {/* Desktop Workspaces */}
+      <div className="hidden md:block w-[70px] min-w-[70px]">
         <Workspaces
           workspaces={workspaces}
           selectedWorkspace={selectedWorkspace}
@@ -277,8 +285,8 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Collections */}
-      <div className="hidden md:block basis-0 min-w-0" style={{ flex: "2.5 1 0%" }}>
+      {/* Desktop Collections */}
+      <div className="hidden md:block w-[240px] min-w-[240px]">
         <CollectionSidebar
           collections={collections}
           selectedCollection={selectedCollection}
@@ -290,32 +298,40 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Snippets */}
-      <div className="basis-0 min-w-0" style={{ flex: "4.5 1 0%" }}>
-        <SnippetsPreview
-          snippets={snippets}
-          onSelectSnippet={setSelectedSnippet}
-          onEditSnippet={handleUpdateSnippet}
-          onDeleteSnippet={handleDeleteSnippet}
-          selectedSnippetId={selectedSnippet?.id}
-          workspaceLoading={workspaceLoading} // <-- NEW PROP
-        />
-      </div>
+      {/* Main Content */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        {/* Snippets */}
+        <div className="flex-1 overflow-y-auto border-r border-gray-800">
+          <SnippetsPreview
+            snippets={snippets}
+            onSelectSnippet={setSelectedSnippet}
+            onEditSnippet={handleUpdateSnippet}
+            onDeleteSnippet={handleDeleteSnippet}
+            selectedSnippetId={selectedSnippet?.id}
+            workspaceLoading={workspaceLoading}
+          />
+        </div>
 
-      {/* Code */}
-      <div className="basis-0 min-w-0" style={{ flex: "6 1 0%" }}>
-        <CodePreview
-          key={previewVersion}
-          snippet={selectedSnippet}
-          onUpdated={(updated: any) => {
-            const uId = String(updated.id);
-            setSelectedSnippet(updated);
-            setSnippets((prev: any[]) =>
-              prev.some((s) => String(s.id) === uId) ? prev.map((s) => (String(s.id) === uId ? updated : s)) : [updated, ...prev]
-            );
-            setPreviewVersion((v) => v + 1);
-          }}
-        />
+        {/* Code */}
+         {/* Code */}
+  {selectedSnippet && (
+    <div className="flex-[1.2] overflow-y-auto">
+      <CodePreview
+        key={previewVersion}
+        snippet={selectedSnippet}
+        onUpdated={(updated: any) => {
+          const uId = String(updated.id);
+          setSelectedSnippet(updated);
+          setSnippets((prev: any[]) =>
+            prev.some((s) => String(s.id) === uId)
+              ? prev.map((s) => (String(s.id) === uId ? updated : s))
+              : [updated, ...prev]
+          );
+          setPreviewVersion((v) => v + 1);
+        }}
+      />
+    </div>
+  )}
       </div>
 
       {/* Create Snippet Modal */}
@@ -325,6 +341,46 @@ export default function Dashboard() {
         collectionId={selectedCollection}
         onCreated={handleSnippetCreated}
       />
+
+      {/* Mobile Workspaces Drawer */}
+      {showWorkspaces && (
+        <div className="fixed inset-0 bg-gray-900 z-50 flex justify-start md:hidden">
+          <div className="w-3/4 max-w-xs bg-gray-900 h-full shadow-lg">
+            <Workspaces
+              workspaces={workspaces}
+              selectedWorkspace={selectedWorkspace}
+              onSelectWorkspace={(id) => {
+                handleSelectWorkspace(id);
+                setShowWorkspaces(false);
+              }}
+              onWorkspaceCreated={handleWorkspaceCreated}
+              onAddWorkspace={() => {}}
+            />
+          </div>
+          <button onClick={() => setShowWorkspaces(false)} className="flex-1"></button>
+        </div>
+      )}
+
+      {/* Mobile Collections Drawer */}
+      {showCollections && (
+        <div className="absolute inset-0 bg-black bg-opacity-70 z-50 flex">
+          <div className="w-3/4 bg-[#0E1116] p-4 overflow-auto">
+            <CollectionSidebar
+              collections={collections}
+              selectedCollection={selectedCollection}
+              onSelectCollection={(id: number | null) => {
+                setSelectedCollection(id);
+                setShowCollections(false);
+              }}
+              setCollections={setCollections}
+              selectedWorkspaceId={selectedWorkspace}
+              onAddSnippet={handleAddSnippet}
+              onSnippetCreated={handleSnippetCreated}
+            />
+          </div>
+          <button onClick={() => setShowCollections(false)} className="flex-1"></button>
+        </div>
+      )}
     </div>
   );
 }

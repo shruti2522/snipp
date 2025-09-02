@@ -15,7 +15,5 @@ export default function DashboardGuard({ children }: { children: React.ReactNode
     }
   }, [status, router]);
 
-  if (status === "loading") return <Loader />;
-
   return <>{children}</>;
 }

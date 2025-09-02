@@ -23,7 +23,7 @@ model User {
 
   // Ownership: one user can own many workspaces
   workspaces    Workspace[]
-
+  sharedWorkspaces Workspace[] @relation("WorkspaceShares")
   // Auth.js relations
   accounts      Account[]
   sessions      Session[]
@@ -82,6 +82,8 @@ model Workspace {
   // NEW: owner relation to User
   ownerId     String?
   owner       User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  sharedWith  User[]       @relation("WorkspaceShares")
 }
 
 model Collection {
